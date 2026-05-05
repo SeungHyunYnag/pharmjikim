@@ -1,67 +1,63 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>휴일 지킴이 약국</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>휴일 지킴이 약국</title>
 
-    <script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=c4or0vlqhm"></script>
+<script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=c4or0vlqhm"></script>
 
-    <style>
-        #map {
-            width: 100%;
-            height: 100vh;
-        }
+<style>
+#map {
+    width: 100%;
+    height: 100vh;
+}
 
-        .info-box {
-            padding: 10px;
-            background: white;
-            border-radius: 8px;
-            border: 1px solid #ccc;
-            font-size: 13px;
-        }
+.info-box {
+    padding: 10px;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    font-size: 13px;
+}
 
-        .notice {
-            font-size: 12px;
-            font-weight: bold;
-            margin-top: 5px;
-            margin-bottom: 5px;
-        }
+/* 🔥 중앙 안내 박스 */
+.notice-box {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    font-size: 14px;
+    z-index: 999;
+    display: none;
+    text-align: center;
+}
 
-        /* 🔥 하단 안내 박스 */
-        .notice-box {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: white;
-            padding: 12px 16px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            font-size: 13px;
-            z-index: 999;
-            display: none;
-            max-width: 300px;
-            text-align: center;
-        }
+.notice-box a {
+    color: blue;
+    font-weight: bold;
+    text-decoration: underline;
+}
 
-        .notice-box a {
-            color: blue;
-            font-weight: bold;
-            text-decoration: underline;
-        }
-    </style>
+.notice {
+    font-size: 12px;
+    font-weight: bold;
+    margin-top: 4px;
+}
+</style>
 </head>
 
 <body>
 
 <div id="map"></div>
 
-<!-- 🔥 안내 박스 -->
+<!-- 중앙 안내 -->
 <div id="noticeBox" class="notice-box">
-    <b>반경 1km 안에 운영중인 약국이 없습니다.</b><br/>
-    서울시 공공심야약국 정보를 확인해보세요.<br/><br/>
-
+    <b>반경 1km 안에 운영중인 약국이 없습니다.</b><br/><br/>
     <a href="https://news.seoul.go.kr/welfare/archives/567003?tr_code=short" target="_blank">
         👉 서울시 공공심야약국 바로가기
     </a>
@@ -70,119 +66,117 @@
 <script>
 
 let map;
+let currentInfoWindow = null; // 🔥 열린 팝업 추적
 
-// 시간 포맷
-function formatTime(t) {
-    if (!t) return "정보 없음";
-    t = t.toString().padStart(4, "0");
-    return t.substring(0, 2) + ":" + t.substring(2);
+function formatTime(t){
+    if(!t) return "정보 없음";
+    t=t.toString().padStart(4,"0");
+    return t.slice(0,2)+":"+t.slice(2);
 }
 
-// 운영 여부 판단
-function isOpen(start, end) {
-    if (!start || !end) return false;
+function isOpen(start,end){
+    if(!start||!end) return false;
 
-    let now = new Date();
-    let current = now.getHours() * 100 + now.getMinutes();
+    let now=new Date();
+    let current=now.getHours()*100+now.getMinutes();
 
-    let s = parseInt(start);
-    let e = parseInt(end);
+    let s=parseInt(start);
+    let e=parseInt(end);
 
-    if (e > 2400) {
-        e -= 2400;
-        return current >= s || current <= e;
+    if(e>2400){
+        e-=2400;
+        return current>=s||current<=e;
     }
 
-    return current >= s && current <= e;
+    return current>=s&&current<=e;
 }
 
-// 거리 계산 (km)
-function getDistance(lat1, lng1, lat2, lng2) {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
+function getDistance(lat1,lng1,lat2,lng2){
+    const R=6371;
+    const dLat=(lat2-lat1)*Math.PI/180;
+    const dLng=(lng2-lng1)*Math.PI/180;
 
-    const a =
-        Math.sin(dLat/2) * Math.sin(dLat/2) +
-        Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) *
-        Math.sin(dLng/2) * Math.sin(dLng/2);
+    const a=Math.sin(dLat/2)**2+
+        Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+        Math.sin(dLng/2)**2;
 
-    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+    return R*(2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));
 }
 
-// 안내 박스
-function showNotice() {
-    document.getElementById("noticeBox").style.display = "block";
+function showNotice(){
+    document.getElementById("noticeBox").style.display="block";
 }
 
-function hideNotice() {
-    document.getElementById("noticeBox").style.display = "none";
+function hideNotice(){
+    document.getElementById("noticeBox").style.display="none";
 }
 
 // 지도 초기화
-function initMap(lat, lng) {
+function initMap(lat,lng){
 
-    map = new naver.maps.Map("map", {
-        center: new naver.maps.LatLng(lat, lng),
-        zoom: 14
+    map=new naver.maps.Map("map",{
+        center:new naver.maps.LatLng(lat,lng),
+        zoom:14
     });
 
-    // 🔴 내 위치 마커
+    // 🔴 내 위치
     new naver.maps.Marker({
-        position: new naver.maps.LatLng(lat, lng),
-        map: map,
-        icon: {
-            url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(`
+        position:new naver.maps.LatLng(lat,lng),
+        map:map,
+        icon:{
+            url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(`
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">
-                    <circle cx="11" cy="11" r="7" fill="#FF0000" stroke="white" stroke-width="2"/>
+                    <circle cx="11" cy="11" r="7" fill="red" stroke="white" stroke-width="2"/>
                 </svg>
-            `),
-            size: new naver.maps.Size(22, 22),
-            anchor: new naver.maps.Point(11, 11)
+            `)
         }
     });
 
-    // 지도 클릭 시 안내 닫기
-    naver.maps.Event.addListener(map, "click", function () {
+    // 🔥 지도 클릭 시 모두 닫기
+    naver.maps.Event.addListener(map,"click",()=>{
         hideNotice();
+
+        if(currentInfoWindow){
+            currentInfoWindow.close();
+            currentInfoWindow=null;
+        }
     });
 
-    loadPharmacies(lat, lng);
+    loadPharmacies(lat,lng);
 }
 
 // 약국 불러오기
-async function loadPharmacies(lat, lng) {
+async function loadPharmacies(lat,lng){
 
-    const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
-    const data = await res.json();
+    const res=await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
+    const data=await res.json();
 
-    if (!data || data.length === 0) return;
+    let hasNearbyOpen=false;
 
-    let hasNearbyOpen = false;
+    data.forEach(p=>{
 
-    data.forEach(p => {
-
-        const marker = new naver.maps.Marker({
-            position: new naver.maps.LatLng(p.lat, p.lng),
-            map: map
+        const marker=new naver.maps.Marker({
+            position:new naver.maps.LatLng(p.lat,p.lng),
+            map:map
         });
 
-        const distance = getDistance(lat, lng, p.lat, p.lng);
-        const open = isOpen(p.start, p.end);
+        const dist=getDistance(lat,lng,p.lat,p.lng);
+        const open=isOpen(p.start,p.end);
 
-        if (distance <= 1 && open) {
-            hasNearbyOpen = true;
-        }
+        if(dist<=1&&open) hasNearbyOpen=true;
 
-        const infoWindow = new naver.maps.InfoWindow({
-            maxWidth: 250,
-            content: `
+        // 🔥 네이버 검색 링크 (약국명 기반)
+        const naverLink = `https://m.search.naver.com/search.naver?query=${encodeURIComponent(p.name)}`;
+
+        const infoWindow=new naver.maps.InfoWindow({
+            maxWidth:250,
+            content:`
                 <div class="info-box">
                     <b>${p.name}</b><br/><br/>
 
                     📞 <a href="tel:${p.tel}">${p.tel}</a><br/>
                     🕒 ${formatTime(p.start)} ~ ${formatTime(p.end)}
-                    ${open ? "🟢 운영중" : "🔴 종료"}<br/>
+                    ${open?"🟢 운영중":"🔴 종료"}<br/>
                     📍 ${p.addr || ""}<br/>
 
                     <div class="notice">
@@ -192,30 +186,36 @@ async function loadPharmacies(lat, lng) {
                     <hr/>
 
                     🔗 <a href="https://www.pharm114.or.kr" target="_blank">휴일지킴이 약국</a><br/>
-                    🔗 <a href="https://m.place.naver.com" target="_blank">네이버 지도 영업정보</a>
+                    🔗 <a href="${naverLink}" target="_blank">네이버 지도 영업정보</a>
                 </div>
             `
         });
 
-        naver.maps.Event.addListener(marker, "click", function () {
+        naver.maps.Event.addListener(marker,"click",()=>{
             hideNotice();
-            infoWindow.open(map, marker);
+
+            // 🔥 기존 열려있던거 닫기
+            if(currentInfoWindow){
+                currentInfoWindow.close();
+            }
+
+            infoWindow.open(map,marker);
+            currentInfoWindow=infoWindow;
         });
     });
 
-    // 🔥 1km 내 운영 약국 없으면 안내 표시
-    if (!hasNearbyOpen) {
+    if(!hasNearbyOpen){
         showNotice();
     }
 }
 
-// 위치 가져오기
+// 위치
 navigator.geolocation.getCurrentPosition(
-    function (pos) {
-        initMap(pos.coords.latitude, pos.coords.longitude);
+    pos=>{
+        initMap(pos.coords.latitude,pos.coords.longitude);
     },
-    function () {
-        alert("위치 권한을 허용해야 합니다.");
+    ()=>{
+        alert("위치 권한 필요");
     }
 );
 
