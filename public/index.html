@@ -117,7 +117,7 @@ function initMap(lat, lng) {
 ========================= */
 async function loadPharmacies(lat, lng) {
 
-    const res = await fetch(`http://localhost:3000/api/pharmacies?lat=${lat}&lng=${lng}`);
+    const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
     const data = await res.json();
 
     if (!data || data.length === 0) return;
