@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>휴일 지킴이 약국</title>
 
+    <!-- 네이버 지도 API -->
     <script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=c4or0vlqhm"></script>
 
     <style>
@@ -26,35 +27,11 @@
             text-decoration: underline;
         }
 
-        .no-box {
-            position: fixed;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-            background: #fff;
-            padding: 18px;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-            text-align: center;
-            width: 300px;
-            z-index: 9999;
-        }
-
-        .btn {
-            margin-top: 10px;
-            padding: 8px 12px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-        }
-
-        .btn-primary {
-            background: #2f80ed;
-            color: white;
-        }
-
-        .btn-gray {
-            background: #eee;
+        .notice {
+            font-size: 12px;
+            font-weight: bold;
+            margin-top: 6px;
+            margin-bottom: 6px;
         }
     </style>
 </head>
@@ -66,28 +43,15 @@
 <script>
 
 let map;
-let markers = [];
 
-/* =========================
-   거리 계산
-========================= */
-function getDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-
-    const a =
-        Math.sin(dLat/2) * Math.sin(dLat/2) +
-        Math.cos(lat1*Math.PI/180) *
-        Math.cos(lat2*Math.PI/180) *
-        Math.sin(dLon/2) * Math.sin(dLon/2);
-
-    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+// 시간 포맷 함수 (0900 → 09:00)
+function formatTime(t) {
+    if (!t) return "정보 없음";
+    t = t.toString().padStart(4, "0");
+    return t.substring(0, 2) + ":" + t.substring(2);
 }
 
-/* =========================
-   지도 초기화
-========================= */
+// 지도 초기화
 function initMap(lat, lng) {
 
     map = new naver.maps.Map("map", {
@@ -95,58 +59,45 @@ function initMap(lat, lng) {
         zoom: 14
     });
 
-    // 🔴 내 위치
+    // 🔴 내 위치 마커
     new naver.maps.Marker({
         position: new naver.maps.LatLng(lat, lng),
         map: map,
         icon: {
             url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(`
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">
-                    <circle cx="11" cy="11" r="7" fill="red" stroke="white" stroke-width="2"/>
+                    <circle cx="11" cy="11" r="7" fill="#FF0000" stroke="white" stroke-width="2"/>
                 </svg>
             `),
-            size: new naver.maps.Size(22,22),
-            anchor: new naver.maps.Point(11,11)
+            size: new naver.maps.Size(22, 22),
+            anchor: new naver.maps.Point(11, 11)
         }
     });
 
     loadPharmacies(lat, lng);
 }
 
-/* =========================
-   약국 로드
-========================= */
+// 약국 데이터 불러오기
 async function loadPharmacies(lat, lng) {
 
     const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
     const data = await res.json();
 
-    if (!data || data.length === 0) return;
-
-    // 기존 마커 제거
-    markers.forEach(m => m.setMap(null));
-    markers = [];
-
-    let nearCount = 0;
+    if (!data || data.length === 0) {
+        alert("주변 약국 없음");
+        return;
+    }
 
     data.forEach(p => {
-
-        if (!p.lat || !p.lng) return;
-
-        const distance = getDistance(lat, lng, p.lat, p.lng);
-
-        if (distance <= 1) {
-            nearCount++;
-        }
 
         const marker = new naver.maps.Marker({
             position: new naver.maps.LatLng(p.lat, p.lng),
             map: map
         });
 
-        markers.push(marker);
-
-        const info = new naver.maps.InfoWindow({
+        // ✅ InfoWindow (크기 제한 추가)
+        const infoWindow = new naver.maps.InfoWindow({
+            maxWidth: 250,   // 🔥 여기 추가된 핵심
             content: `
                 <div class="info-box">
                     <b>${p.name}</b><br/><br/>
@@ -155,94 +106,41 @@ async function loadPharmacies(lat, lng) {
                     🕒 ${formatTime(p.start)} ~ ${formatTime(p.end)}<br/>
                     📍 ${p.addr || ""}<br/>
 
-                    <div style="
-                        margin: 2px 0 3px 0;
-                        font-size: 12px;
-                        font-weight: bold;
-                        color: #000;
-                    ">
-                        ※ 보다 정확한 운영 여부는 전화로 확인 바랍니다.
+                    <div class="notice">
+                        ※ 보다 정확한 운영 여부는 전화로 확인 바랍니다
                     </div>
 
                     <hr/>
 
-                    🔗 <a href="https://map.naver.com/v5/search/${encodeURIComponent(p.name)}" target="_blank">
-                        네이버 지도 영업정보
-                    </a><br/>
-
-                    🔗 <a href="https://www.pharm114.or.kr" target="_blank">
-                        휴일지킴이 약국
-                    </a>
+                    🔗 <a href="https://www.pharm114.or.kr" target="_blank">휴일지킴이 약국</a><br/>
+                    🔗 <a href="https://m.place.naver.com" target="_blank">네이버 지도 영업정보</a>
                 </div>
             `
         });
 
-        naver.maps.Event.addListener(marker, "click", () => {
-            info.open(map, marker);
+        naver.maps.Event.addListener(marker, "click", function () {
+            infoWindow.open(map, marker);
         });
     });
-
-    // 🔥 2km 내 약국 없을 때
-    if (nearCount === 0) {
-        showNoPharmacyUI();
-    }
 }
 
-/* =========================
-   없음 팝업
-========================= */
-function showNoPharmacyUI() {
-
-    const box = document.createElement("div");
-    box.className = "no-box";
-
-    box.innerHTML = `
-        <div style="font-weight:700; font-size:16px;">
-            주변 약국 없음
-        </div>
-
-        <div style="margin-top:10px; font-size:13px; color:#555;">
-            반경 1km 안에 운영중인 약국이 없습니다.<br/>
-            서울시 공공심야약국 정보를 확인하시겠습니까?
-        </div>
-
-        <button class="btn btn-primary" id="go">
-            확인
-        </button>
-
-        <button class="btn btn-gray" id="close">
-            닫기
-        </button>
-    `;
-
-    document.body.appendChild(box);
-
-    document.getElementById("go").onclick = function () {
-        window.open(
-            "https://news.seoul.go.kr/welfare/archives/567003?tr_code=short",
-            "_blank"
-        );
-        box.remove();
-    };
-
-    document.getElementById("close").onclick = () => box.remove();
-}
-
-/* =========================
-   시간 포맷
-========================= */
-function formatTime(t) {
-    if (!t) return "정보 없음";
-    let s = t.toString().replace(":", "").padStart(4, "0");
-    return s.slice(0,2) + ":" + s.slice(2);
-}
-
-/* =========================
-   위치
-========================= */
+// 현재 위치 가져오기
 navigator.geolocation.getCurrentPosition(
-    (pos) => initMap(pos.coords.latitude, pos.coords.longitude),
-    () => alert("위치 권한 필요")
+    function (pos) {
+
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        initMap(lat, lng);
+    },
+    function (err) {
+        alert("위치 권한을 허용해야 합니다.");
+    },
+    {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+    }
 );
 
 </script>
