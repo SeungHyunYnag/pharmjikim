@@ -12,22 +12,60 @@ const PORT = process.env.PORT || 3000;
 const PUBLIC_KEY = "3996c6ef0e033bd3cc0ce7f5c51b1d8b08dfea8e210adcfc13072073d08bfc35";
 const SEOUL_KEY = "4d754d515773616d35387343596568";
 
+/* -----------------------------
+   공공 약국 위치 API
+----------------------------- */
 const PHARMACY_API =
 "https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService/getParmacyLcinfoInqire";
 
+/* -----------------------------
+   서울 운영시간 API (JSON)
+----------------------------- */
 const SEOUL_API =
-`http://openapi.seoul.go.kr:8088/${SEOUL_KEY}/json/TbPharmacyOperateInfo/1/1000/`;
+`https://openapi.seoul.go.kr:8088/${SEOUL_KEY}/json/TbPharmacyOperateInfo/1/1000/`;
+
+/* -----------------------------
+   공휴일 API (대한민국)
+----------------------------- */
+const HOLIDAY_API =
+"https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo";
+
+/* -----------------------------
+   공휴일 체크
+----------------------------- */
+async function isHoliday() {
+    try {
+        const today = new Date();
+        const y = today.getFullYear();
+        const m = String(today.getMonth() + 1).padStart(2, "0");
+
+        const res = await axios.get(HOLIDAY_API, {
+            params: {
+                serviceKey: PUBLIC_KEY,
+                solYear: y,
+                solMonth: m
+            }
+        });
+
+        const items = res.data?.response?.body?.items?.item || [];
+
+        const todayStr =
+            y +
+            m +
+            String(today.getDate()).padStart(2, "0");
+
+        return items.some(d => d.locdate == todayStr);
+    } catch {
+        return false;
+    }
+}
 
 /* -----------------------------
    서울 데이터
 ----------------------------- */
 async function getSeoulData(){
-    try {
-        const res = await axios.get(SEOUL_API);
-        return res.data?.TbPharmacyOperateInfo?.row || [];
-    } catch {
-        return [];
-    }
+    const res = await axios.get(SEOUL_API);
+    return res.data?.TbPharmacyOperateInfo?.row || [];
 }
 
 /* -----------------------------
@@ -58,15 +96,24 @@ function normalize(n){
 }
 
 /* -----------------------------
-   🔥 오늘 요일 기준 시간 추출
+   🔥 오늘 운영시간 추출 (공휴일 포함)
 ----------------------------- */
-function getTodayTime(s){
+function getTodayTime(s, isHoliday){
 
     if(!s) return { start:null, end:null };
 
     const day = new Date().getDay();
 
-    if(day === 0){ // 일요일
+    // 공휴일
+    if(isHoliday){
+        return {
+            start: s.DUTYTIME8S || null,
+            end: s.DUTYTIME8C || null
+        };
+    }
+
+    // 일요일
+    if(day === 0){
         return {
             start: s.DUTYTIME7S || null,
             end: s.DUTYTIME7C || null
@@ -74,12 +121,12 @@ function getTodayTime(s){
     }
 
     const map = {
-        1: [s.DUTYTIME1S, s.DUTYTIME1C],
-        2: [s.DUTYTIME2S, s.DUTYTIME2C],
-        3: [s.DUTYTIME3S, s.DUTYTIME3C],
-        4: [s.DUTYTIME4S, s.DUTYTIME4C],
-        5: [s.DUTYTIME5S, s.DUTYTIME5C],
-        6: [s.DUTYTIME6S, s.DUTYTIME6C],
+        1:[s.DUTYTIME1S,s.DUTYTIME1C],
+        2:[s.DUTYTIME2S,s.DUTYTIME2C],
+        3:[s.DUTYTIME3S,s.DUTYTIME3C],
+        4:[s.DUTYTIME4S,s.DUTYTIME4C],
+        5:[s.DUTYTIME5S,s.DUTYTIME5C],
+        6:[s.DUTYTIME6S,s.DUTYTIME6C]
     };
 
     return {
@@ -91,7 +138,7 @@ function getTodayTime(s){
 /* -----------------------------
    MERGE
 ----------------------------- */
-function merge(national, seoul){
+function merge(national, seoul, isHolidayFlag){
 
     return national.map(p => {
 
@@ -101,7 +148,7 @@ function merge(national, seoul){
             return a.includes(b) || b.includes(a);
         });
 
-        const today = getTodayTime(s);
+        const today = getTodayTime(s, isHolidayFlag);
 
         return {
             name: p.dutyName,
@@ -110,8 +157,8 @@ function merge(national, seoul){
             addr: p.dutyAddr,
             tel: p.dutyTel1,
 
-            weekdayStart: today.start,
-            weekdayEnd: today.end
+            start: today.start,
+            end: today.end
         };
     });
 }
@@ -121,15 +168,15 @@ function merge(national, seoul){
 ----------------------------- */
 function isOpen(p){
 
-    if(!p.weekdayStart || !p.weekdayEnd) return true;
+    if(!p.start || !p.end) return true;
 
     const now = new Date();
     const time = now.getHours()*100 + now.getMinutes();
 
-    const start = parseInt(p.weekdayStart);
-    const end = parseInt(p.weekdayEnd);
+    const s = parseInt(p.start);
+    const e = parseInt(p.end);
 
-    return time >= start && time <= end;
+    return time >= s && time <= e;
 }
 
 /* -----------------------------
@@ -139,12 +186,13 @@ app.get("/api/pharmacies", async (req,res)=>{
 
     const { lat, lng } = req.query;
 
-    const [national, seoul] = await Promise.all([
+    const [national, seoul, holiday] = await Promise.all([
         getPharmacyData(lat,lng),
-        getSeoulData()
+        getSeoulData(),
+        isHoliday()
     ]);
 
-    const merged = merge(national, seoul);
+    const merged = merge(national, seoul, holiday);
 
     res.json(
         merged.map(p => ({
