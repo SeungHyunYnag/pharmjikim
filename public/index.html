@@ -51,7 +51,7 @@ function closeInfo(){
 }
 
 // =========================
-// 🔥 시간 변환 (핵심 업그레이드)
+// 🔥 시간 변환 (0900 → 09:00 / 2500 → 다음날 01:00)
 function formatTime(t){
 
     if(!t) return "-";
@@ -61,7 +61,6 @@ function formatTime(t){
     let hour = parseInt(t.slice(0,2));
     let min = t.slice(2);
 
-    // 🔥 2500 같은 값 처리 (다음날 01:00)
     if(hour >= 24){
         hour = hour - 24;
         return `다음날 ${String(hour).padStart(2,"0")}:${min}`;
@@ -113,7 +112,14 @@ async function load(lat,lng){
     const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
     const data = await res.json();
 
+    let hasNearby = false;
+
     data.forEach(p=>{
+
+        // 🔥 1km 이내 존재 여부 체크
+        if(p.distance && p.distance <= 1){
+            hasNearby = true;
+        }
 
         const marker = new naver.maps.Marker({
             position:new naver.maps.LatLng(p.lat,p.lng),
@@ -132,9 +138,7 @@ async function load(lat,lng){
                     <b>${p.name}</b><br/>
                     📍 ${p.addr}<br/>
 
-                    🕒 ${formatTime(p.weekdayStart)}~${formatTime(p.weekdayEnd)}
-                    &nbsp;/&nbsp;
-                    📏 ${p.distance.toFixed(2)}km<br/>
+                    🕒 ${formatTime(p.start)} ~ ${formatTime(p.end)}<br/>
 
                     📞 <a href="tel:${p.tel}">
                         ${p.tel || "-"}
@@ -163,6 +167,29 @@ async function load(lat,lng){
         });
 
     });
+
+    // =========================
+    // 🔥 1km 이내 약국이 없을 때 안내
+    if(!hasNearby){
+
+        const info = new naver.maps.InfoWindow({
+            content:`
+                <div class="info-box">
+
+                    <b>주변 1km 안에 운영중인 약국이 없습니다.</b><br/><br/>
+
+                    👉 서울공공심야약국 정보를 알려드립니다.<br/><br/>
+
+                    🔗 <a href="https://news.seoul.go.kr/welfare/archives/567003" target="_blank">
+                        서울 공공심야약국 안내
+                    </a>
+
+                </div>
+            `
+        });
+
+        info.open(map);
+    }
 }
 
 // =========================
