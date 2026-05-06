@@ -1,29 +1,25 @@
 const express = require("express");
+const axios = require("axios");
 const xml2js = require("xml2js");
-const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// =============================
 // 🔑 공공데이터 키
+// =============================
 const SERVICE_KEY =
 process.env.SERVICE_KEY ||
 "3996c6ef0e033bd3cc0ce7f5c51b1d8b08dfea8e210adcfc13072073d08bfc35";
 
 // =============================
-// static
+// 🔥 캐시
 // =============================
-app.use(express.static("public"));
+let cache = { data: null, time: 0 };
+const CACHE_TIME = 1000 * 60 * 10;
 
 // =============================
-// root
-// =============================
-app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
-// =============================
-// API
+// 📍 API
 // =============================
 app.get("/api/pharmacies", async (req, res) => {
 
@@ -32,15 +28,24 @@ app.get("/api/pharmacies", async (req, res) => {
         const { lat, lng } = req.query;
 
         if (!lat || !lng) {
-            return res.status(400).json({ error: "lat lng 필요" });
+            return res.status(400).json({ error: "lat, lng 필요" });
         }
 
-        const data = await loadPharmacies();
+        let data;
+
+        // 캐시
+        if (cache.data && Date.now() - cache.time < CACHE_TIME) {
+            data = cache.data;
+        } else {
+            data = await loadData();
+            cache = { data, time: Date.now() };
+        }
 
         const result = data
             .map(p => {
 
                 const distance = getDistance(lat, lng, p.lat, p.lng);
+                const isOpen = checkOpen(p);
 
                 return {
                     name: p.name,
@@ -48,37 +53,40 @@ app.get("/api/pharmacies", async (req, res) => {
                     lat: p.lat,
                     lng: p.lng,
                     tel: p.tel,
-                    weekdayStart: p.weekdayStart,
-                    weekdayEnd: p.weekdayEnd,
+                    weekdayStart: p.start,
+                    weekdayEnd: p.end,
+                    isOpen,
                     distance
                 };
             })
-            // 🔥 10km 제한
+
+            // 10km 제한
             .filter(p => p.distance <= 10)
-            .sort((a,b)=>a.distance-b.distance);
+
+            // 운영중 우선 정렬
+            .sort((a,b)=> b.isOpen - a.isOpen || a.distance - b.distance);
 
         res.json(result);
 
-    } catch (e) {
-        console.error(e);
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ error: "server error" });
     }
 });
 
 // =============================
-// 공공데이터
+// 📦 공공데이터 로딩
 // =============================
-async function loadPharmacies() {
+async function loadData() {
 
     const url =
     `https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService/getParmacyBassInfoInqire` +
     `?serviceKey=${SERVICE_KEY}&numOfRows=1000&pageNo=1`;
 
-    const xml = await fetch(url).then(r => r.text());
-    const json = await xml2js.parseStringPromise(xml);
+    const xml = await axios.get(url);
+    const json = await xml2js.parseStringPromise(xml.data);
 
-    const items =
-        json?.response?.body?.[0]?.items?.[0]?.item || [];
+    const items = json.response.body[0].items[0].item;
 
     return items.map(p => ({
 
@@ -89,8 +97,9 @@ async function loadPharmacies() {
         lat: Number(p.wgs84Lat?.[0]),
         lng: Number(p.wgs84Lon?.[0]),
 
-        weekdayStart: p.dutyTime1s?.[0],
-        weekdayEnd: p.dutyTime1c?.[0],
+        // 요일 시간
+        start: getTodayStart(p),
+        end: getTodayEnd(p),
 
         raw: p
     }))
@@ -98,7 +107,75 @@ async function loadPharmacies() {
 }
 
 // =============================
-// 거리 계산
+// 🕒 오늘 요일 계산
+// =============================
+function getDay() {
+    return new Date().getDay(); // 0~6
+}
+
+// =============================
+// 🕒 오늘 시작 시간
+// =============================
+function getTodayStart(p){
+
+    const d = getDay();
+
+    const map = {
+        0:"dutyTime7s",
+        1:"dutyTime1s",
+        2:"dutyTime2s",
+        3:"dutyTime3s",
+        4:"dutyTime4s",
+        5:"dutyTime5s",
+        6:"dutyTime6s",
+    };
+
+    return p[map[d]]?.[0];
+}
+
+// =============================
+// 🕒 오늘 종료 시간
+// =============================
+function getTodayEnd(p){
+
+    const d = getDay();
+
+    const map = {
+        0:"dutyTime7c",
+        1:"dutyTime1c",
+        2:"dutyTime2c",
+        3:"dutyTime3c",
+        4:"dutyTime4c",
+        5:"dutyTime5c",
+        6:"dutyTime6c",
+    };
+
+    return p[map[d]]?.[0];
+}
+
+// =============================
+// 🟢 운영중 판단
+// =============================
+function checkOpen(p){
+
+    if(!p.start || !p.end) return false;
+
+    let start = parseInt(p.start);
+    let end = parseInt(p.end);
+
+    // 🔥 2500 처리 (익일)
+    if(end >= 2400){
+        end = end - 2400;
+    }
+
+    const now = new Date();
+    const nowTime = now.getHours()*100 + now.getMinutes();
+
+    return nowTime >= start && nowTime <= end;
+}
+
+// =============================
+// 📏 거리 계산
 // =============================
 function getDistance(lat1, lon1, lat2, lon2) {
 
@@ -117,6 +194,6 @@ function getDistance(lat1, lon1, lat2, lon2) {
 }
 
 // =============================
-app.listen(PORT, () => {
+app.listen(PORT, ()=>{
     console.log("server running:", PORT);
 });
