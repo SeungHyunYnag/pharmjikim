@@ -168,9 +168,9 @@ async function loadPharmacies(lat,lng){
 
         if(dist <= 1 && open) hasNearbyOpen = true;
 
-        // 🔥 네이버 지도 (좌표 기반 + placePath)
+        // 🔥 네이버 "정보 보기" (약국명 + 주소 검색)
         const naverLink =
-            `https://map.naver.com/v5/?c=${p.lng},${p.lat},16,0,0,0,dh&placePath=${encodeURIComponent(p.name)}`;
+            `https://m.search.naver.com/search.naver?query=${encodeURIComponent(p.name + " " + (p.addr || ""))}`;
 
         const infoWindow = new naver.maps.InfoWindow({
             maxWidth:250,
@@ -194,7 +194,7 @@ async function loadPharmacies(lat,lng){
                     </a><br/>
 
                     🔗 <a href="${naverLink}" target="_blank">
-                        네이버 지도에서 보기
+                        네이버 정보 보기
                     </a>
                 </div>
             `
