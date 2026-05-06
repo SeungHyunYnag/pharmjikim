@@ -1,5 +1,4 @@
 const express = require("express");
-const fetch = require("node-fetch");
 const xml2js = require("xml2js");
 
 const app = express();
@@ -10,39 +9,33 @@ const SERVICE_KEY =
 process.env.SERVICE_KEY ||
 "3996c6ef0e033bd3cc0ce7f5c51b1d8b08dfea8e210adcfc13072073d08bfc35";
 
-// 🔥 캐시 (Render 성능 필수)
-let cache = {
-    data: null,
-    time: 0
-};
-const CACHE_TIME = 1000 * 60 * 10; // 10분
+// 🔥 캐시
+let cache = { data:null, time:0 };
+const CACHE_TIME = 1000 * 60 * 10;
 
 // =============================
-// 📍 API (프론트 호출)
+// 📍 API
 // =============================
 app.get("/api/pharmacies", async (req, res) => {
 
     try {
+
         const { lat, lng } = req.query;
 
         if (!lat || !lng) {
-            return res.status(400).json({ error: "lat, lng 필요" });
+            return res.status(400).json({ error: "lat lng 필요" });
         }
 
-        let pharmacies;
+        let data;
 
-        // 🔥 캐시 사용
         if (cache.data && Date.now() - cache.time < CACHE_TIME) {
-            pharmacies = cache.data;
+            data = cache.data;
         } else {
-            pharmacies = await loadPharmacies();
-            cache = {
-                data: pharmacies,
-                time: Date.now()
-            };
+            data = await loadPharmacies();
+            cache = { data, time: Date.now() };
         }
 
-        const result = pharmacies
+        const result = data
             .map(p => {
 
                 const distance = getDistance(lat, lng, p.lat, p.lng);
@@ -61,12 +54,12 @@ app.get("/api/pharmacies", async (req, res) => {
                 };
             })
             .filter(p => p.distance <= 1 && p.isOpen)
-            .sort((a, b) => a.distance - b.distance);
+            .sort((a,b)=>a.distance-b.distance);
 
         res.json(result);
 
-    } catch (err) {
-        console.error(err);
+    } catch (e) {
+        console.error(e);
         res.status(500).json({ error: "server error" });
     }
 });
@@ -77,13 +70,14 @@ app.get("/api/pharmacies", async (req, res) => {
 async function loadPharmacies() {
 
     const url =
-        `https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService/getParmacyBassInfoInqire` +
-        `?serviceKey=${SERVICE_KEY}&numOfRows=1000&pageNo=1`;
+    `https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService/getParmacyBassInfoInqire` +
+    `?serviceKey=${SERVICE_KEY}&numOfRows=1000&pageNo=1`;
 
     const xml = await fetch(url).then(r => r.text());
     const json = await xml2js.parseStringPromise(xml);
 
-    const items = json.response.body[0].items[0].item;
+    const items =
+        json?.response?.body?.[0]?.items?.[0]?.item || [];
 
     return items.map(p => ({
 
@@ -103,68 +97,59 @@ async function loadPharmacies() {
 }
 
 // =============================
-// 🟢 운영중 판단 (요일 + 공휴일 구조)
+// 🟢 운영중 판단
 // =============================
 function checkOpen(p) {
 
     const now = new Date();
-    const day = now.getDay(); // 0~6
-
-    const isHoliday = (day === 0); // 일요일 단순 공휴일 처리
+    const day = now.getDay();
 
     let start, end;
 
-    if (isHoliday) {
-        start = p.dutyTime8s?.[0];
-        end = p.dutyTime8c?.[0];
-    } else {
+    const map = {
+        1:["dutyTime1s","dutyTime1c"],
+        2:["dutyTime2s","dutyTime2c"],
+        3:["dutyTime3s","dutyTime3c"],
+        4:["dutyTime4s","dutyTime4c"],
+        5:["dutyTime5s","dutyTime5c"],
+        6:["dutyTime6s","dutyTime6c"],
+        0:["dutyTime7s","dutyTime7c"]
+    };
 
-        const map = {
-            1: ["dutyTime1s", "dutyTime1c"],
-            2: ["dutyTime2s", "dutyTime2c"],
-            3: ["dutyTime3s", "dutyTime3c"],
-            4: ["dutyTime4s", "dutyTime4c"],
-            5: ["dutyTime5s", "dutyTime5c"],
-            6: ["dutyTime6s", "dutyTime6c"],
-            0: ["dutyTime7s", "dutyTime7c"]
-        };
+    const [sKey,cKey] = map[day] || [];
 
-        const [sKey, cKey] = map[day] || [];
+    start = p[sKey]?.[0];
+    end = p[cKey]?.[0];
 
-        start = p[sKey]?.[0];
-        end = p[cKey]?.[0];
-    }
+    if(!start || !end) return false;
 
-    if (!start || !end) return false;
-
-    const nowNum =
-        now.getHours() * 100 + now.getMinutes();
+    const nowNum = now.getHours()*100 + now.getMinutes();
 
     return nowNum >= Number(start) && nowNum <= Number(end);
 }
 
 // =============================
-// 📏 거리 계산 (Haversine)
+// 📏 거리 계산
 // =============================
 function getDistance(lat1, lon1, lat2, lon2) {
 
     const R = 6371;
 
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const dLat = (lat2-lat1) * Math.PI/180;
+    const dLon = (lon2-lon1) * Math.PI/180;
 
     const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(lat1 * Math.PI / 180) *
-        Math.cos(lat2 * Math.PI / 180) *
-        Math.sin(dLon / 2) ** 2;
+        Math.sin(dLat/2)**2 +
+        Math.cos(lat1*Math.PI/180) *
+        Math.cos(lat2*Math.PI/180) *
+        Math.sin(dLon/2)**2;
 
-    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
 }
 
 // =============================
 // 🚀 서버 실행
 // =============================
 app.listen(PORT, () => {
-    console.log("🚀 server running on port:", PORT);
+    console.log("server running:", PORT);
 });
