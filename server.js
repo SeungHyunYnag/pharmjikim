@@ -2,58 +2,143 @@ const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
 const path = require("path");
-const PORT = process.env.PORT || 3000;
 
 const app = express();
 app.use(cors());
-
-// 📁 static 폴더 연결 (index.html용)
 app.use(express.static(path.join(__dirname, "public")));
 
-const SERVICE_KEY =
-  "3996c6ef0e033bd3cc0ce7f5c51b1d8b08dfea8e210adcfc13072073d08bfc35";
+const PORT = process.env.PORT || 3000;
 
-// 📍 약국 API
-app.get("/api/pharmacies", async (req, res) => {
-  try {
-    const { lat, lng } = req.query;
+/* ------------------------------------
+   🔑 API KEY
+------------------------------------ */
+const PUBLIC_KEY =
+"3996c6ef0e033bd3cc0ce7f5c51b1d8b08dfea8e210adcfc13072073d08bfc35";
 
-    const url =
-      "https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService/getParmacyLcinfoInqire";
+const SEOUL_KEY =
+"4d754d515773616d35387343596568";
 
-    const response = await axios.get(url, {
-      params: {
-        serviceKey: SERVICE_KEY,
-        WGS84_LON: lng,
-        WGS84_LAT: lat,
-        numOfRows: 100,
-        pageNo: 1,
-      },
+/* ------------------------------------
+   📍 공공 약국 위치 API
+------------------------------------ */
+const PHARMACY_API =
+"https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService/getParmacyLcinfoInqire";
+
+/* ------------------------------------
+   🏙 서울 약국 운영시간 API
+------------------------------------ */
+const SEOUL_API =
+`http://openapi.seoul.go.kr:8088/${SEOUL_KEY}/json/TbPharmacyOperateInfo/1/1000/`;
+
+/* ------------------------------------
+   📦 서울 데이터
+------------------------------------ */
+async function getSeoulData(){
+    try {
+        const res = await axios.get(SEOUL_API);
+        return res.data?.TbPharmacyOperateInfo?.row || [];
+    } catch (e) {
+        console.log("서울 API 실패:", e.message);
+        return [];
+    }
+}
+
+/* ------------------------------------
+   📦 공공 약국 데이터
+------------------------------------ */
+async function getPharmacyData(lat,lng){
+
+    const res = await axios.get(PHARMACY_API, {
+        params: {
+            serviceKey: PUBLIC_KEY,
+            WGS84_LAT: lat,
+            WGS84_LON: lng,
+            numOfRows: 100,
+            pageNo: 1
+        }
     });
 
-    const items = response.data?.response?.body?.items?.item || [];
+    return res.data?.response?.body?.items?.item || [];
+}
 
-    const result = items.map((p) => ({
-      name: p.dutyName,
-      lat: p.latitude,
-      lng: p.longitude,
-      tel: p.dutyTel1,
-      addr: p.dutyAddr,
-      start: p.startTime,
-      end: p.endTime,
-      distance: p.distance,
-    }));
+/* ------------------------------------
+   🔥 MERGE (핵심)
+------------------------------------ */
+function mergeData(national, seoul){
 
-    res.json(result);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({
-      error: "API 오류",
-      detail: err.message,
+    return national.map(p => {
+
+        const s = seoul.find(x =>
+            x.PHARM_NM === p.dutyName
+        );
+
+        return {
+            name: p.dutyName,
+            lat: p.latitude,
+            lng: p.longitude,
+            addr: p.dutyAddr,
+            tel: p.dutyTel1,
+
+            weekdayStart: s?.MON_START,
+            weekdayEnd: s?.MON_END,
+            saturdayStart: s?.SAT_START,
+            saturdayEnd: s?.SAT_END,
+            holidayOpen: s?.HOLIDAY_YN || "N"
+        };
     });
-  }
+}
+
+/* ------------------------------------
+   🕒 OPEN / CLOSE 판단
+------------------------------------ */
+function isOpen(p){
+
+    const now = new Date();
+    const day = now.getDay();
+    const time = now.getHours()*100 + now.getMinutes();
+
+    if(day === 0){
+        return p.holidayOpen === "Y";
+    }
+
+    if(day === 6){
+        return time >= p.saturdayStart && time <= p.saturdayEnd;
+    }
+
+    return time >= p.weekdayStart && time <= p.weekdayEnd;
+}
+
+/* ------------------------------------
+   🌐 API (프론트)
+------------------------------------ */
+app.get("/api/pharmacies", async (req,res)=>{
+
+    try {
+
+        const { lat, lng } = req.query;
+
+        const [national, seoul] = await Promise.all([
+            getPharmacyData(lat,lng),
+            getSeoulData()
+        ]);
+
+        const merged = mergeData(national, seoul);
+
+        const result = merged.map(p => ({
+            ...p,
+            isOpen: isOpen(p)
+        }));
+
+        res.json(result);
+
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+/* ------------------------------------
+   🚀 서버 실행
+------------------------------------ */
+app.listen(PORT, ()=>{
+    console.log("🚀 server running on port", PORT);
 });
