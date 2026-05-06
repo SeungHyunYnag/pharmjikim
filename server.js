@@ -1,180 +1,65 @@
 const express = require("express");
 const axios = require("axios");
-const cors = require("cors");
-const path = require("path");
 const xml2js = require("xml2js");
 
 const app = express();
-app.use(cors());
-app.use(express.static(path.join(__dirname, "public")));
+const PORT = process.env.PORT || 3000;
 
-const PORT = 3000;
-
-/* 🔑 인증키 */
 const SERVICE_KEY = "3996c6ef0e033bd3cc0ce7f5c51b1d8b08dfea8e210adcfc13072073d08bfc35";
 
-/* 🔥 약국 API */
-const PHARMACY_API =
+const API_URL =
 "https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService/getParmacyBassInfoInqire";
 
-/* 🔥 공휴일 API */
-const HOLIDAY_API =
-"https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo";
+app.get("/api/test", async (req, res) => {
 
-/* -----------------------------
-   공휴일 확인 (월 1번 호출)
------------------------------ */
-async function checkHoliday(){
+    try {
 
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth()+1).padStart(2,"0");
-    const today = now.toISOString().slice(0,10).replace(/-/g,"");
+        const { lat, lng } = req.query;
 
-    try{
-
-        const res = await axios.get(HOLIDAY_API,{
-            params:{
-                serviceKey:SERVICE_KEY,
-                solYear:year,
-                solMonth:month
+        const response = await axios.get(API_URL, {
+            params: {
+                serviceKey: SERVICE_KEY,
+                WGS84_LAT: lat,
+                WGS84_LON: lng,
+                numOfRows: 10,
+                pageNo: 1
             }
         });
 
-        const json = await xml2js.parseStringPromise(res.data,{
-            explicitArray:false
+        // 🔥 원본 XML 확인
+        console.log("RAW XML:", response.data.substring(0,200));
+
+        const parsed = await xml2js.parseStringPromise(response.data, {
+            explicitArray: false
         });
 
-        const items = json?.response?.body?.items?.item;
+        let items = parsed?.response?.body?.items?.item;
 
-        if(!items) return false;
+        // 🔥 핵심: 배열 보정
+        if (!items) items = [];
+        if (!Array.isArray(items)) items = [items];
 
-        const list = Array.isArray(items) ? items : [items];
-
-        return list.some(d => d.locdate == today);
-
-    }catch(e){
-        console.log("공휴일 API 오류");
-        return false;
-    }
-}
-
-/* -----------------------------
-   약국 데이터
------------------------------ */
-async function getPharmacy(lat,lng){
-
-    const res = await axios.get(PHARMACY_API,{
-        params:{
-            serviceKey:SERVICE_KEY,
-            pageNo:1,
-            numOfRows:100,
-            WGS84_LAT:lat,
-            WGS84_LON:lng
-        }
-    });
-
-    const json = await xml2js.parseStringPromise(res.data,{
-        explicitArray:false
-    });
-
-    return json?.response?.body?.items?.item || [];
-}
-
-/* -----------------------------
-   오늘 시간 추출
------------------------------ */
-function getTodayTime(p, isHoliday){
-
-    if(isHoliday){
-        return {
-            start: p.dutyTime8s || null,
-            end: p.dutyTime8c || null
-        };
-    }
-
-    const day = new Date().getDay();
-
-    const map = {
-        0:["dutyTime7s","dutyTime7c"], // 일
-        1:["dutyTime1s","dutyTime1c"],
-        2:["dutyTime2s","dutyTime2c"],
-        3:["dutyTime3s","dutyTime3c"],
-        4:["dutyTime4s","dutyTime4c"],
-        5:["dutyTime5s","dutyTime5c"],
-        6:["dutyTime6s","dutyTime6c"]
-    };
-
-    const [s,c] = map[day];
-
-    return {
-        start: p[s] || null,
-        end: p[c] || null
-    };
-}
-
-/* -----------------------------
-   OPEN 판단 (🔥 2500 처리 핵심)
------------------------------ */
-function isOpen(start,end){
-
-    if(!start || !end) return false; // 휴무
-
-    const now = new Date();
-    const nowTime = now.getHours()*100 + now.getMinutes();
-
-    let s = parseInt(start);
-    let e = parseInt(end);
-
-    // 🔥 2500 → 다음날
-    if(e > 2400){
-        e = e - 2400;
-        return (nowTime >= s || nowTime <= e);
-    }
-
-    return nowTime >= s && nowTime <= e;
-}
-
-/* -----------------------------
-   API
------------------------------ */
-app.get("/api/pharmacies", async (req,res)=>{
-
-    try{
-
-        const { lat,lng } = req.query;
-
-        // 🔥 공휴일 1번만 호출
-        const holiday = await checkHoliday();
-
-        const data = await getPharmacy(lat,lng);
-
-        const result = data.map(p=>{
-
-            const t = getTodayTime(p, holiday);
-
-            return {
-                name:p.dutyName,
-                addr:p.dutyAddr,
-                tel:p.dutyTel1,
-                lat:Number(p.wgs84Lat),
-                lng:Number(p.wgs84Lon),
-
-                weekdayStart:t.start,
-                weekdayEnd:t.end,
-
-                isOpen:isOpen(t.start,t.end)
-            };
-        });
+        // 🔥 최소 데이터만 반환
+        const result = items.map(p => ({
+            name: p.dutyName,
+            addr: p.dutyAddr,
+            lat: p.wgs84Lat,
+            lng: p.wgs84Lon
+        }));
 
         res.json(result);
 
-    }catch(e){
-        console.error(e);
-        res.status(500).json({error:"server error"});
+    } catch (e) {
+
+        console.error("🔥 ERROR:", e.message);
+
+        res.status(500).json({
+            error: "FAIL",
+            detail: e.message
+        });
     }
 });
 
-app.listen(PORT,()=>{
-    console.log("🚀 server running:",PORT);
+app.listen(PORT, () => {
+    console.log("🚀 server start:", PORT);
 });
