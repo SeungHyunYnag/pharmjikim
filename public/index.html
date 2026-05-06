@@ -8,7 +8,15 @@
 <script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=c4or0vlqhm"></script>
 
 <style>
-#map{width:100%;height:100vh;}
+body,html{
+    margin:0;
+    padding:0;
+}
+
+#map{
+    width:100%;
+    height:100vh;
+}
 
 .info-box{
     padding:12px;
@@ -16,6 +24,11 @@
     border-radius:10px;
     font-size:13px;
     line-height:1.5;
+    max-width:260px;
+}
+
+a{
+    text-decoration:none;
 }
 </style>
 </head>
@@ -29,6 +42,9 @@
 let map;
 let currentInfoWindow = null;
 
+// =========================
+// 📌 InfoWindow 닫기
+// =========================
 function closeInfo(){
     if(currentInfoWindow){
         currentInfoWindow.close();
@@ -36,12 +52,18 @@ function closeInfo(){
     }
 }
 
+// =========================
+// 🕒 시간 포맷
+// =========================
 function formatTime(t){
     if(!t) return "-";
     t = t.toString().padStart(4,"0");
-    return t.slice(0,2)+":"+t.slice(2);
+    return t.slice(0,2) + ":" + t.slice(2);
 }
 
+// =========================
+// 📍 지도 초기화
+// =========================
 function initMap(lat,lng){
 
     map = new naver.maps.Map("map",{
@@ -49,92 +71,127 @@ function initMap(lat,lng){
         zoom:14
     });
 
-    // 🔴 내 위치
+    // 🔴 현재 위치 마커
     new naver.maps.Marker({
         position:new naver.maps.LatLng(lat,lng),
         map:map,
         icon:{
-            content:`<div style="width:12px;height:12px;background:red;border-radius:50%;border:2px solid #fff"></div>`
+            content:`
+                <div style="
+                    width:14px;
+                    height:14px;
+                    background:red;
+                    border-radius:50%;
+                    border:2px solid #fff;
+                "></div>
+            `
         }
     });
 
-    load(lat,lng);
+    loadPharmacies(lat,lng);
 }
 
-async function load(lat,lng){
+// =========================
+// 📦 서버 데이터 호출
+// =========================
+async function loadPharmacies(lat,lng){
 
-    const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
-    const data = await res.json();
+    try{
 
-    data.forEach(p => {
+        const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
+        const data = await res.json();
 
-        const marker = new naver.maps.Marker({
-            position:new naver.maps.LatLng(p.lat,p.lng),
-            map:map
-        });
+        // ❗ 결과 없음
+        if(!data || data.length === 0){
+            if(confirm("근처 운영중 약국이 없습니다.\n공공심야약국 안내로 이동할까요?")){
+                window.location.href =
+                "https://news.seoul.go.kr/welfare/archives/567003";
+            }
+            return;
+        }
 
-        const shortAddr =
-        (p.addr || "").split(" ").slice(0,3).join(" ");
+        data.forEach(p => {
 
-        const naverLink =
-        `https://map.naver.com/v5/search/${encodeURIComponent(p.name + " " + shortAddr)}`;
+            const marker = new naver.maps.Marker({
+                position:new naver.maps.LatLng(p.lat,p.lng),
+                map:map
+            });
 
-        const timeText =
-        (p.weekdayStart && p.weekdayEnd)
-        ? `🕒 ${formatTime(p.weekdayStart)} ~ ${formatTime(p.weekdayEnd)}`
-        : "🕒 운영시간 정보 없음";
+            // 🔗 네이버 검색 링크 (placeId 없이 안정 방식)
+            const naverLink =
+            `https://map.naver.com/v5/search/${encodeURIComponent(p.name + " " + p.addr)}`;
 
-        const info = new naver.maps.InfoWindow({
-            content:`
-                <div class="info-box">
+            const timeText =
+            (p.weekdayStart && p.weekdayEnd)
+            ? `🕒 ${formatTime(p.weekdayStart)} ~ ${formatTime(p.weekdayEnd)}`
+            : "🕒 정보 없음";
 
-                    <b>${p.name}</b><br/>
+            const info = new naver.maps.InfoWindow({
+                content:`
+                    <div class="info-box">
 
-                    📍 ${p.addr || ""}<br/>
+                        <b>${p.name}</b><br/>
 
-                    <div style="
-                        display:flex;
-                        justify-content:space-between;
-                        margin:6px 0;
-                        font-weight:500;
-                    ">
-                        <span>${timeText}</span>
-                        <span>${p.isOpen ? "🟢 운영중" : "🔴 종료"}</span>
+                        📍 ${p.addr}<br/><br/>
+
+                        <div style="display:flex;justify-content:space-between;">
+                            <span>${timeText}</span>
+                            <span>${p.isOpen ? "🟢 운영중" : "🔴 종료"}</span>
+                        </div>
+
+                        <br/>
+
+                        📞
+                        <a href="tel:${p.tel}" style="color:#007aff;font-weight:bold;">
+                            ${p.tel || "-"}
+                        </a>
+
+                        <hr/>
+
+                        <div style="font-size:12px;color:#666;">
+                            ※ 운영시간은 공공데이터 기준이며 실제와 다를 수 있습니다
+                        </div>
+
+                        <br/>
+
+                        <a href="https://www.pharm114.or.kr" target="_blank" style="color:#007aff;">
+                            🔗 휴일지킴이 약국 (pharm114)
+                        </a>
+                        <br/>
+
+                        <a href="${naverLink}" target="_blank" style="color:#03c75a;">
+                            🔎 네이버 지도 보기
+                        </a>
+
                     </div>
+                `
+            });
 
-                    📞 <a href="tel:${p.tel}" style="color:#007aff;font-weight:600;">
-                        ${p.tel || "-"}
-                    </a><br/>
+            naver.maps.Event.addListener(marker,"click",()=>{
+                closeInfo();
+                info.open(map,marker);
+                currentInfoWindow = info;
+            });
 
-                    <div style="margin-top:6px;font-weight:700;color:#000;">
-                        ※ 보다 정확한 운영 여부는 전화로 확인 바랍니다
-                    </div>
-
-                    <hr/>
-
-                    <a href="https://www.pharm114.or.kr" target="_blank">
-                        🔗 휴일지킴이 약국 (pharm114)
-                    </a><br/>
-
-                    <a href="${naverLink}" target="_blank">
-                        🔎 네이버 정보
-                    </a>
-
-                </div>
-            `
         });
 
-        naver.maps.Event.addListener(marker,"click",()=>{
-            closeInfo();
-            info.open(map,marker);
-            currentInfoWindow = info;
-        });
-    });
+    }catch(e){
+        console.error(e);
+        alert("데이터를 불러오지 못했습니다.");
+    }
 }
 
-navigator.geolocation.getCurrentPosition(pos=>{
-    initMap(pos.coords.latitude,pos.coords.longitude);
-});
+// =========================
+// 📍 사용자 위치 가져오기
+// =========================
+navigator.geolocation.getCurrentPosition(
+    (pos)=>{
+        initMap(pos.coords.latitude, pos.coords.longitude);
+    },
+    (err)=>{
+        alert("위치 권한이 필요합니다.");
+    }
+);
 
 </script>
 
