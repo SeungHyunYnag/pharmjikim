@@ -51,7 +51,7 @@ function closeInfo(){
 }
 
 // =========================
-// 🔥 거리 계산 (추가됨 - 1km 체크용)
+// 거리 계산
 function getDistance(lat1, lng1, lat2, lng2) {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -132,9 +132,11 @@ async function load(lat,lng){
 
     data.forEach(p=>{
 
-        const dist = getDistance(lat, lng, p.lat, p.lng);
+        // 🔥 핵심 수정 (undefined 방어)
+        const dist = (p.lat && p.lng)
+            ? getDistance(lat, lng, p.lat, p.lng)
+            : 999;
 
-        // 🔥 1km 체크
         if(dist <= 1){
             hasNearby = true;
         }
@@ -187,7 +189,6 @@ async function load(lat,lng){
     });
 
     // =========================
-    // 🔥 1km 내 약국 없을 때 안내
     if(!hasNearby){
 
         const info = new naver.maps.InfoWindow({
