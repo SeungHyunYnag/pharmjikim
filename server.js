@@ -18,9 +18,9 @@ const PHARMACY_API =
 const SEOUL_API =
 `http://openapi.seoul.go.kr:8088/${SEOUL_KEY}/json/TbPharmacyOperateInfo/1/1000/`;
 
-/* ------------------------------
-   서울 데이터
------------------------------- */
+/* -----------------------------
+   서울 API 가져오기
+----------------------------- */
 async function getSeoulData(){
     try {
         const res = await axios.get(SEOUL_API);
@@ -30,9 +30,9 @@ async function getSeoulData(){
     }
 }
 
-/* ------------------------------
-   공공 약국 데이터
------------------------------- */
+/* -----------------------------
+   공공 API
+----------------------------- */
 async function getPharmacyData(lat,lng){
     const res = await axios.get(PHARMACY_API, {
         params: {
@@ -47,16 +47,26 @@ async function getPharmacyData(lat,lng){
     return res.data?.response?.body?.items?.item || [];
 }
 
-/* ------------------------------
+/* -----------------------------
    이름 정리
------------------------------- */
+----------------------------- */
 function normalize(n){
     return (n || "").replace(/\s/g,"").replace(/\(.*?\)/g,"");
 }
 
-/* ------------------------------
+/* -----------------------------
+   🔥 서울 API 필드 자동 대응
+----------------------------- */
+function pickTime(obj, keys){
+    for(const k of keys){
+        if(obj?.[k]) return obj[k];
+    }
+    return null;
+}
+
+/* -----------------------------
    MERGE
------------------------------- */
+----------------------------- */
 function merge(national, seoul){
 
     return national.map(p => {
@@ -72,19 +82,20 @@ function merge(national, seoul){
             addr: p.dutyAddr,
             tel: p.dutyTel1,
 
-            // 🔥 운영시간 (서울 API)
-            weekdayStart: s?.MON_START || null,
-            weekdayEnd: s?.MON_END || null,
-            saturdayStart: s?.SAT_START || null,
-            saturdayEnd: s?.SAT_END || null,
+            // 🔥 서울 API 다양한 필드 대응
+            weekdayStart: pickTime(s, ["MON_START","MON_OPEN_TM","WEEKDAY_START_TM"]),
+            weekdayEnd: pickTime(s, ["MON_END","MON_CLOSE_TM","WEEKDAY_END_TM"]),
+            saturdayStart: pickTime(s, ["SAT_START","SAT_OPEN_TM"]),
+            saturdayEnd: pickTime(s, ["SAT_END","SAT_CLOSE_TM"]),
+
             holidayOpen: s?.HOLIDAY_YN || "N"
         };
     });
 }
 
-/* ------------------------------
+/* -----------------------------
    OPEN / CLOSE
------------------------------- */
+----------------------------- */
 function toTime(t){
     if(!t) return null;
     return parseInt(t);
@@ -113,9 +124,9 @@ function isOpen(p){
     return time >= start && time <= end;
 }
 
-/* ------------------------------
+/* -----------------------------
    API
------------------------------- */
+----------------------------- */
 app.get("/api/pharmacies", async (req,res)=>{
 
     const { lat, lng } = req.query;
@@ -127,17 +138,14 @@ app.get("/api/pharmacies", async (req,res)=>{
 
     const merged = merge(national, seoul);
 
-    const result = merged.map(p => ({
-        ...p,
-        isOpen: isOpen(p)
-    }));
-
-    res.json(result);
+    res.json(
+        merged.map(p => ({
+            ...p,
+            isOpen: isOpen(p)
+        }))
+    );
 });
 
-/* ------------------------------
-   START
------------------------------- */
 app.listen(PORT, ()=>{
     console.log("server running:", PORT);
 });
