@@ -131,19 +131,20 @@ async function load(lat,lng){
 
     data.forEach(p=>{
 
-        if (!p.lat || !p.lng) return;
+        // ✔️ 핵심 수정: 안전한 좌표 처리
+        const lat2 = p.lat;
+        const lng2 = p.lng;
 
-        // 🔥 수정된 핵심 2줄
-        const distance = (p.lat && p.lng)
-            ? getDistance(lat, lng, p.lat, p.lng)
-            : 999;
+        if (!lat2 || !lng2) return;
 
-        if (!isNaN(distance) && distance <= 1) {
+        const dist = getDistance(lat, lng, lat2, lng2);
+
+        if (!isNaN(dist) && dist <= 1) {
             hasNearby = true;
         }
 
         const marker = new naver.maps.Marker({
-            position:new naver.maps.LatLng(p.lat,p.lng),
+            position:new naver.maps.LatLng(lat2,lng2),
             map:map
         });
 
@@ -183,7 +184,7 @@ async function load(lat,lng){
 
         naver.maps.Event.addListener(marker,"click",()=>{
             closeInfo();
-            info.open(map,marker);
+            info.open(map, marker);
             currentInfoWindow = info;
         });
 
@@ -208,7 +209,8 @@ async function load(lat,lng){
             `
         });
 
-        info.open(map);
+        // ✔️ 안정 실행 (중요)
+        info.open(map, map.getCenter());
     }
 }
 
