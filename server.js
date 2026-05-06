@@ -7,7 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // =============================
-// 정적 파일
+// static + index
 // =============================
 app.use(express.static("public"));
 
@@ -16,14 +16,14 @@ app.get("/", (req, res) => {
 });
 
 // =============================
-// 공공데이터 키
+// API KEY
 // =============================
 const SERVICE_KEY =
 process.env.SERVICE_KEY ||
 "3996c6ef0e033bd3cc0ce7f5c51b1d8b08dfea8e210adcfc13072073d08bfc35";
 
 // =============================
-// 캐시
+// cache
 // =============================
 let cache = { data: null, time: 0 };
 const CACHE_TIME = 1000 * 60 * 10;
@@ -43,13 +43,12 @@ app.get("/api/pharmacies", async (req, res) => {
 
         let data;
 
-        // 캐시
         if (cache.data && Date.now() - cache.time < CACHE_TIME) {
             data = cache.data;
         } else {
             data = await loadAPI();
 
-            console.log("📦 전체 약국 수:", data.length);
+            console.log("📦 전체 약국:", data.length);
 
             cache = { data, time: Date.now() };
         }
@@ -69,17 +68,12 @@ app.get("/api/pharmacies", async (req, res) => {
                     weekdayStart: p.start,
                     weekdayEnd: p.end,
                     distance,
-                    isOpen   // 👈 UI용 상태만 전달
+                    isOpen
                 };
             })
+            .filter(p => p.distance <= 10);
 
-            // 🚨 삭제 조건은 거리만
-            .filter(p => p.distance <= 10)
-
-            // 가까운 순 정렬
-            .sort((a,b)=> a.distance - b.distance);
-
-        console.log("📍 최종 전달:", result.length);
+        console.log("📍 최종:", result.length);
 
         res.json(result);
 
@@ -90,7 +84,7 @@ app.get("/api/pharmacies", async (req, res) => {
 });
 
 // =============================
-// 공공 API 로딩
+// 공공 API
 // =============================
 async function loadAPI() {
 
@@ -100,7 +94,7 @@ async function loadAPI() {
         `https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService/getParmacyBassInfoInqire` +
         `?serviceKey=${SERVICE_KEY}&numOfRows=1000&pageNo=1`;
 
-        const xml = await axios.get(url, { timeout: 10000 });
+        const xml = await axios.get(url);
 
         const json = await xml2js.parseStringPromise(xml.data);
 
@@ -108,7 +102,6 @@ async function loadAPI() {
             json?.response?.body?.[0]?.items?.[0]?.item || [];
 
         return items.map(p => ({
-
             name: p.dutyName?.[0],
             addr: p.dutyAddr?.[0],
             tel: p.dutyTel1?.[0],
@@ -126,7 +119,6 @@ async function loadAPI() {
 
         console.error("❌ API 실패:", e.message);
 
-        // fallback (지도 항상 표시)
         return [{
             name: "테스트 약국",
             addr: "서울 테스트",
@@ -183,17 +175,19 @@ function getTodayEnd(p){
 }
 
 // =============================
-// 운영중 판단 (UI용)
+// 🟢 운영중 판단 (핵심 수정)
 // =============================
 function checkOpen(p){
 
     if(!p.start || !p.end) return false;
 
-    let start = Number(p.start);
-    let end = Number(p.end);
+    let start = parseInt(p.start);
+    let end = parseInt(p.end);
 
-    // 2500 처리
-    if(end >= 2400) end -= 2400;
+    // 🔥 익일 처리 (2400~2500)
+    if(end >= 2400){
+        end = end - 2400;
+    }
 
     const now = new Date();
     const nowTime = now.getHours()*100 + now.getMinutes();
