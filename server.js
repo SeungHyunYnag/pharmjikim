@@ -16,7 +16,7 @@ const PHARMACY_API =
 "https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService/getParmacyLcinfoInqire";
 
 /* -----------------------------
-   🔥 서울 데이터 (전체 로딩)
+   🔥 서울 데이터 전체 로딩
 ----------------------------- */
 async function getSeoulData(){
 
@@ -50,7 +50,7 @@ async function getSeoulData(){
 }
 
 /* -----------------------------
-   공공 데이터
+   공공 API
 ----------------------------- */
 async function getPharmacyData(lat,lng){
     const res = await axios.get(PHARMACY_API, {
@@ -78,7 +78,7 @@ function normalize(n){
 }
 
 /* -----------------------------
-   🔥 오늘 운영시간 추출
+   🔥 오늘 운영시간
 ----------------------------- */
 function getTodayTime(s){
 
@@ -87,8 +87,8 @@ function getTodayTime(s){
     const day = new Date().getDay();
 
     const startMap = [
-        "DUTYTIME7S",
-        "DUTYTIME1S",
+        "DUTYTIME7S", // 일
+        "DUTYTIME1S", // 월
         "DUTYTIME2S",
         "DUTYTIME3S",
         "DUTYTIME4S",
@@ -113,17 +113,30 @@ function getTodayTime(s){
 }
 
 /* -----------------------------
-   MERGE
+   🔥 MERGE (핵심 수정)
 ----------------------------- */
 function merge(national, seoul){
 
     return national.map(p => {
 
+        const gu = (p.dutyAddr || "").split(" ")[1]; // 구
+
         const s = seoul.find(x => {
-            const a = normalize(x.DUTYNAME);
-            const b = normalize(p.dutyName);
-            return a.includes(b) || b.includes(a);
+
+            const nameMatch =
+                normalize(x.DUTYNAME).includes(normalize(p.dutyName));
+
+            const addrMatch =
+                (x.DUTYADDR || "").includes(gu);
+
+            return nameMatch && addrMatch;
         });
+
+        if(!s){
+            console.log("❌ 매칭 실패:", p.dutyName);
+        } else {
+            console.log("✅ 매칭 성공:", p.dutyName);
+        }
 
         const today = getTodayTime(s);
 
@@ -141,11 +154,11 @@ function merge(national, seoul){
 }
 
 /* -----------------------------
-   OPEN 판단
+   🔥 운영 여부
 ----------------------------- */
 function isOpen(p){
 
-    if(!p.weekdayStart || !p.weekdayEnd) return true;
+    if(!p.weekdayStart || !p.weekdayEnd) return false;
 
     const now = new Date();
     const time = now.getHours()*100 + now.getMinutes();
