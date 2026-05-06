@@ -15,19 +15,38 @@ const SEOUL_KEY = "4d754d515773616d35387343596568";
 const PHARMACY_API =
 "https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService/getParmacyLcinfoInqire";
 
-const SEOUL_API =
-`http://openapi.seoul.go.kr:8088/${SEOUL_KEY}/json/TbPharmacyOperateInfo/1/1000/`;
-
 /* -----------------------------
-   서울 데이터
+   🔥 서울 데이터 (전체 로딩)
 ----------------------------- */
 async function getSeoulData(){
-    try {
-        const res = await axios.get(SEOUL_API);
-        return res.data?.TbPharmacyOperateInfo?.row || [];
-    } catch {
-        return [];
+
+    let all = [];
+    let start = 1;
+    const step = 1000;
+
+    while(true){
+
+        const url =
+        `https://openapi.seoul.go.kr:8088/${SEOUL_KEY}/json/TbPharmacyOperateInfo/${start}/${start+step-1}/`;
+
+        const res = await axios.get(url).catch(()=>null);
+
+        if(!res) break;
+
+        const rows = res.data?.TbPharmacyOperateInfo?.row || [];
+
+        if(rows.length === 0) break;
+
+        all = all.concat(rows);
+
+        if(rows.length < step) break;
+
+        start += step;
     }
+
+    console.log("서울 데이터 수:", all.length);
+
+    return all;
 }
 
 /* -----------------------------
@@ -54,11 +73,12 @@ function normalize(n){
     return (n || "")
         .replace(/\s/g,"")
         .replace(/\(.*?\)/g,"")
+        .replace(/약국/g,"")
         .toLowerCase();
 }
 
 /* -----------------------------
-   🔥 오늘 요일 기준 시간 추출
+   🔥 오늘 운영시간 추출
 ----------------------------- */
 function getTodayTime(s){
 
@@ -66,25 +86,29 @@ function getTodayTime(s){
 
     const day = new Date().getDay();
 
-    if(day === 0){ // 일요일
-        return {
-            start: s.DUTYTIME7S || null,
-            end: s.DUTYTIME7C || null
-        };
-    }
+    const startMap = [
+        "DUTYTIME7S",
+        "DUTYTIME1S",
+        "DUTYTIME2S",
+        "DUTYTIME3S",
+        "DUTYTIME4S",
+        "DUTYTIME5S",
+        "DUTYTIME6S"
+    ];
 
-    const map = {
-        1: [s.DUTYTIME1S, s.DUTYTIME1C],
-        2: [s.DUTYTIME2S, s.DUTYTIME2C],
-        3: [s.DUTYTIME3S, s.DUTYTIME3C],
-        4: [s.DUTYTIME4S, s.DUTYTIME4C],
-        5: [s.DUTYTIME5S, s.DUTYTIME5C],
-        6: [s.DUTYTIME6S, s.DUTYTIME6C],
-    };
+    const endMap = [
+        "DUTYTIME7C",
+        "DUTYTIME1C",
+        "DUTYTIME2C",
+        "DUTYTIME3C",
+        "DUTYTIME4C",
+        "DUTYTIME5C",
+        "DUTYTIME6C"
+    ];
 
     return {
-        start: map[day]?.[0] || null,
-        end: map[day]?.[1] || null
+        start: s[startMap[day]] || null,
+        end: s[endMap[day]] || null
     };
 }
 
@@ -137,21 +161,26 @@ function isOpen(p){
 ----------------------------- */
 app.get("/api/pharmacies", async (req,res)=>{
 
-    const { lat, lng } = req.query;
+    try{
 
-    const [national, seoul] = await Promise.all([
-        getPharmacyData(lat,lng),
-        getSeoulData()
-    ]);
+        const { lat, lng } = req.query;
 
-    const merged = merge(national, seoul);
+        const national = await getPharmacyData(lat,lng);
+        const seoul = await getSeoulData();
 
-    res.json(
-        merged.map(p => ({
-            ...p,
-            isOpen: isOpen(p)
-        }))
-    );
+        const merged = merge(national, seoul);
+
+        res.json(
+            merged.map(p => ({
+                ...p,
+                isOpen: isOpen(p)
+            }))
+        );
+
+    }catch(e){
+        console.error("🔥 서버 에러:", e.message);
+        res.status(500).json({ error: "server error" });
+    }
 });
 
 app.listen(PORT, ()=>{
