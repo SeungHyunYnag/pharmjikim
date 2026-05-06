@@ -10,20 +10,17 @@ const SERVICE_KEY =
 process.env.SERVICE_KEY ||
 "3996c6ef0e033bd3cc0ce7f5c51b1d8b08dfea8e210adcfc13072073d08bfc35";
 
-// 🔥 캐시
-let cache = { data: null, time: 0 };
+// =============================
+// 📦 public 폴더 정적 서빙 (핵심)
+// =============================
+app.use(express.static("public"));
+
+// =============================
+// 📍 API
+// =============================
+let cache = { data:null, time:0 };
 const CACHE_TIME = 1000 * 60 * 10;
 
-// =============================
-// 🏠 홈페이지 (중요)
-// =============================
-app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "index.html"));
-});
-
-// =============================
-// 📍 약국 API
-// =============================
 app.get("/api/pharmacies", async (req, res) => {
 
     try {
