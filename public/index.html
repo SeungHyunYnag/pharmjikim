@@ -162,9 +162,9 @@ async function loadPharmacies(lat,lng){
 
         if(dist <= 1 && open) hasNearbyOpen = true;
 
-        // 🔥 네이버 정보 보기 (핵심 수정)
+        // 🔥 네이버 정보 보기 (v5/search 방식 - 안정형)
         const naverLink =
-            `https://map.naver.com/p/search/${encodeURIComponent(p.name + " " + (p.addr || ""))}`;
+            `https://map.naver.com/v5/search/${encodeURIComponent(p.name + " " + (p.addr || ""))}`;
 
         const infoWindow = new naver.maps.InfoWindow({
             maxWidth:250,
