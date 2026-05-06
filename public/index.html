@@ -1,26 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>휴일 지킴이 약국</title>
+
+<script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=c4or0vlqhm"></script>
+
+<style>
+#map {
+    width: 100%;
+    height: 100vh;
+}
+
+.info-box {
+    padding: 10px;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    font-size: 13px;
+}
+
+.notice-box {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    font-size: 14px;
+    z-index: 999;
+    display: none;
+    text-align: center;
+}
+
+.notice-box a {
+    color: blue;
+    font-weight: bold;
+    text-decoration: underline;
+}
+
+.notice {
+    font-size: 12px;
+    font-weight: bold;
+    margin-top: 4px;
+}
+</style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<div id="noticeBox" class="notice-box">
+    <b>반경 1km 안에 운영중인 약국이 없습니다.</b><br/><br/>
+    <a href="https://news.seoul.go.kr/welfare/archives/567003?tr_code=short" target="_blank">
+        👉 서울시 공공심야약국 바로가기
+    </a>
+</div>
+
+<script>
+
+let map;
+let currentInfoWindow = null;
+
+// 시간 포맷
+function formatTime(t){
+    if(!t) return "정보 없음";
+    t = t.toString().padStart(4,"0");
+    return t.slice(0,2) + ":" + t.slice(2);
+}
+
+// 운영 여부
+function isOpen(start,end){
+    if(!start || !end) return false;
+
+    let now = new Date();
+    let current = now.getHours() * 100 + now.getMinutes();
+
+    let s = parseInt(start);
+    let e = parseInt(end);
+
+    if(e > 2400){
+        e -= 2400;
+        return current >= s || current <= e;
+    }
+
+    return current >= s && current <= e;
+}
+
+// 거리 계산
+function getDistance(lat1,lng1,lat2,lng2){
+    const R = 6371;
+    const dLat = (lat2-lat1) * Math.PI/180;
+    const dLng = (lng2-lng1) * Math.PI/180;
+
+    const a =
+        Math.sin(dLat/2)**2 +
+        Math.cos(lat1*Math.PI/180) *
+        Math.cos(lat2*Math.PI/180) *
+        Math.sin(dLng/2)**2;
+
+    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
+function showNotice(){
+    document.getElementById("noticeBox").style.display="block";
+}
+
+function hideNotice(){
+    document.getElementById("noticeBox").style.display="none";
+}
+
+// 지도 초기화
+function initMap(lat,lng){
+
+    map = new naver.maps.Map("map",{
+        center:new naver.maps.LatLng(lat,lng),
+        zoom:14
+    });
+
+    // 내 위치
+    new naver.maps.Marker({
+        position:new naver.maps.LatLng(lat,lng),
+        map:map,
+        icon:{
+            url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(`
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">
+                    <circle cx="11" cy="11" r="7" fill="red" stroke="white" stroke-width="2"/>
+                </svg>
+            `)
+        }
+    });
+
+    // 지도 클릭 시 닫기
+    naver.maps.Event.addListener(map,"click",()=>{
+        hideNotice();
+
+        if(currentInfoWindow){
+            currentInfoWindow.close();
+            currentInfoWindow = null;
+        }
+    });
+
+    loadPharmacies(lat,lng);
+}
+
+// 약국 로드
 async function loadPharmacies(lat,lng){
 
-    const res=await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
-    const data=await res.json();
+    const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
+    const data = await res.json();
 
-    let hasNearbyOpen=false;
+    let hasNearbyOpen = false;
 
     data.forEach(p=>{
 
-        const marker=new naver.maps.Marker({
+        const marker = new naver.maps.Marker({
             position:new naver.maps.LatLng(p.lat,p.lng),
             map:map
         });
 
-        const dist=getDistance(lat,lng,p.lat,p.lng);
-        const open=isOpen(p.start,p.end);
+        const dist = getDistance(lat,lng,p.lat,p.lng);
+        const open = isOpen(p.start,p.end);
 
-        if(dist<=1&&open) hasNearbyOpen=true;
+        if(dist <= 1 && open) hasNearbyOpen = true;
 
-        // 🔥 좌표 기반 + placePath 방식 (핵심 수정)
-        const naverLink = `https://map.naver.com/v5/?c=${p.lng},${p.lat},16,0,0,0,dh&placePath=${encodeURIComponent(p.name)}`;
+        // 🔥 네이버 지도 (좌표 기반 + placePath)
+        const naverLink =
+            `https://map.naver.com/v5/?c=${p.lng},${p.lat},16,0,0,0,dh&placePath=${encodeURIComponent(p.name)}`;
 
-        const infoWindow=new naver.maps.InfoWindow({
+        const infoWindow = new naver.maps.InfoWindow({
             maxWidth:250,
             content:`
                 <div class="info-box">
@@ -28,7 +180,7 @@ async function loadPharmacies(lat,lng){
 
                     📞 <a href="tel:${p.tel}">${p.tel}</a><br/>
                     🕒 ${formatTime(p.start)} ~ ${formatTime(p.end)}
-                    ${open?"🟢 운영중":"🔴 종료"}<br/>
+                    ${open ? "🟢 운영중" : "🔴 종료"}<br/>
                     📍 ${p.addr || ""}<br/>
 
                     <div class="notice">
@@ -37,8 +189,10 @@ async function loadPharmacies(lat,lng){
 
                     <hr/>
 
-                    🔗 <a href="https://www.pharm114.or.kr" target="_blank">휴일지킴이 약국</a><br/>
-                    
+                    🔗 <a href="https://www.pharm114.or.kr" target="_blank">
+                        휴일지킴이 약국
+                    </a><br/>
+
                     🔗 <a href="${naverLink}" target="_blank">
                         네이버 지도에서 보기
                     </a>
@@ -50,13 +204,12 @@ async function loadPharmacies(lat,lng){
 
             hideNotice();
 
-            // 기존 열린 창 닫기
             if(currentInfoWindow){
                 currentInfoWindow.close();
             }
 
             infoWindow.open(map,marker);
-            currentInfoWindow=infoWindow;
+            currentInfoWindow = infoWindow;
         });
     });
 
@@ -64,3 +217,18 @@ async function loadPharmacies(lat,lng){
         showNotice();
     }
 }
+
+// 위치 가져오기
+navigator.geolocation.getCurrentPosition(
+    pos=>{
+        initMap(pos.coords.latitude,pos.coords.longitude);
+    },
+    ()=>{
+        alert("위치 권한 필요");
+    }
+);
+
+</script>
+
+</body>
+</html>
