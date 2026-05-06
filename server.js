@@ -11,37 +11,51 @@ process.env.SERVICE_KEY ||
 "3996c6ef0e033bd3cc0ce7f5c51b1d8b08dfea8e210adcfc13072073d08bfc35";
 
 // =============================
-// 📦 static
+// static
 // =============================
 app.use(express.static("public"));
 
 // =============================
-// 🏠 root
+// root
 // =============================
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 // =============================
-// 📍 API (🔥 필터 제거 핵심)
+// API
 // =============================
 app.get("/api/pharmacies", async (req, res) => {
 
     try {
 
-        let data = await loadPharmacies();
+        const { lat, lng } = req.query;
 
-        const result = data.map(p => ({
-            name: p.name,
-            addr: p.addr,
-            lat: p.lat,
-            lng: p.lng,
-            tel: p.tel,
-            weekdayStart: p.weekdayStart,
-            weekdayEnd: p.weekdayEnd,
-            isOpen: true, // 🔥 일단 무조건 true (테스트용)
-            distance: 0
-        }));
+        if (!lat || !lng) {
+            return res.status(400).json({ error: "lat lng 필요" });
+        }
+
+        const data = await loadPharmacies();
+
+        const result = data
+            .map(p => {
+
+                const distance = getDistance(lat, lng, p.lat, p.lng);
+
+                return {
+                    name: p.name,
+                    addr: p.addr,
+                    lat: p.lat,
+                    lng: p.lng,
+                    tel: p.tel,
+                    weekdayStart: p.weekdayStart,
+                    weekdayEnd: p.weekdayEnd,
+                    distance
+                };
+            })
+            // 🔥 10km 제한
+            .filter(p => p.distance <= 10)
+            .sort((a,b)=>a.distance-b.distance);
 
         res.json(result);
 
@@ -52,7 +66,7 @@ app.get("/api/pharmacies", async (req, res) => {
 });
 
 // =============================
-// 📦 공공데이터
+// 공공데이터
 // =============================
 async function loadPharmacies() {
 
@@ -84,7 +98,24 @@ async function loadPharmacies() {
 }
 
 // =============================
-// 🚀 start
+// 거리 계산
+// =============================
+function getDistance(lat1, lon1, lat2, lon2) {
+
+    const R = 6371;
+
+    const dLat = (lat2-lat1) * Math.PI/180;
+    const dLon = (lon2-lon1) * Math.PI/180;
+
+    const a =
+        Math.sin(dLat/2)**2 +
+        Math.cos(lat1*Math.PI/180) *
+        Math.cos(lat2*Math.PI/180) *
+        Math.sin(dLon/2)**2;
+
+    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
 // =============================
 app.listen(PORT, () => {
     console.log("server running:", PORT);
