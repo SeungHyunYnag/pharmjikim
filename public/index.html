@@ -27,29 +27,29 @@
 <script>
 
 let map;
-let currentInfoWindow=null;
+let currentInfoWindow = null;
 
 function closeInfo(){
     if(currentInfoWindow){
         currentInfoWindow.close();
-        currentInfoWindow=null;
+        currentInfoWindow = null;
     }
 }
 
+/* 🔥 시간 포맷 */
 function formatTime(t){
     if(!t) return "-";
-    t=t.toString().padStart(4,"0");
+    t = t.toString().padStart(4,"0");
     return t.slice(0,2)+":"+t.slice(2);
 }
 
 function initMap(lat,lng){
 
-    map=new naver.maps.Map("map",{
+    map = new naver.maps.Map("map",{
         center:new naver.maps.LatLng(lat,lng),
         zoom:14
     });
 
-    // 🔴 내 위치
     new naver.maps.Marker({
         position:new naver.maps.LatLng(lat,lng),
         map:map,
@@ -63,56 +63,76 @@ function initMap(lat,lng){
 
 async function load(lat,lng){
 
-    const res=await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
-    const data=await res.json();
+    const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
+    const data = await res.json();
 
-    data.forEach(p=>{
+    data.forEach(p => {
 
-        const marker=new naver.maps.Marker({
+        const marker = new naver.maps.Marker({
             position:new naver.maps.LatLng(p.lat,p.lng),
             map:map
         });
 
-        const shortAddr=(p.addr||"").split(" ").slice(0,3).join(" ");
+        const shortAddr =
+        (p.addr || "").split(" ").slice(0,3).join(" ");
 
-        const naverLink=
-        `https://map.naver.com/v5/search/${encodeURIComponent(p.name+" "+shortAddr)}`;
+        const naverLink =
+        `https://map.naver.com/v5/search/${encodeURIComponent(p.name + " " + shortAddr)}`;
 
-        const info=new naver.maps.InfoWindow({
+        const info = new naver.maps.InfoWindow({
             content:`
-            <div class="info-box">
+                <div class="info-box">
 
-                <b>${p.name}</b><br/>
-                📍 ${p.addr||""}<br/>
+                    <b>${p.name}</b><br/>
 
-                <div style="margin:6px 0;font-weight:500;">
-                    🕒 ${formatTime(p.start)} ~ ${formatTime(p.end)}
-                    ${p.isOpen ? "🟢 운영중" : "🔴 종료"}
+                    <div style="margin:4px 0;">
+                        📍 ${p.addr || ""}
+                    </div>
+
+                    <!-- 🔥 한 줄 -->
+                    <div style="
+                        display:flex;
+                        justify-content:space-between;
+                        margin:6px 0;
+                        font-weight:500;
+                    ">
+                        <span>
+                            🕒 ${formatTime(p.weekdayStart)} ~ ${formatTime(p.weekdayEnd)}
+                        </span>
+
+                        <span>
+                            ${p.isOpen ? "🟢 운영중" : "🔴 종료"}
+                        </span>
+                    </div>
+
+                    📞 <a href="tel:${p.tel}">${p.tel || "-"}</a><br/>
+
+                    <div style="
+                        margin-top:6px;
+                        font-weight:700;
+                        color:#000;
+                    ">
+                        ※ 보다 정확한 운영 여부는 전화로 확인 바랍니다
+                    </div>
+
+                    <hr/>
+
+                    <a href="https://www.pharm114.or.kr" target="_blank">
+                        🔗 휴일지킴이 약국 (pharm114)
+                    </a><br/>
+
+                    <a href="${naverLink}" target="_blank">
+                        🔎 네이버 정보
+                    </a>
+
                 </div>
-
-                📞 <a href="tel:${p.tel}">${p.tel||"-"}</a><br/>
-
-                <div style="margin-top:6px;font-weight:700;color:#000;">
-                    ※ 보다 정확한 운영 여부는 전화로 확인 바랍니다
-                </div>
-
-                <hr/>
-
-                <a href="https://www.pharm114.or.kr" target="_blank">
-                    🔗 휴일지킴이 약국
-                </a><br/>
-
-                <a href="${naverLink}" target="_blank">
-                    🔎 네이버 정보
-                </a>
-
-            </div>`
+            `
         });
 
         naver.maps.Event.addListener(marker,"click",()=>{
             closeInfo();
             info.open(map,marker);
-            currentInfoWindow=info;
+            currentInfoWindow = info;
         });
     });
 }
