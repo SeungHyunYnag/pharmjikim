@@ -107,18 +107,15 @@ function getDistance(lat1,lng1,lat2,lng2){
 }
 
 /* -------------------------------
-   핵심 🔥 네이버 검색용 문자열 생성
-   👉 "중앙약국 노원구 상계로"
+   네이버 검색 키워드 생성
 --------------------------------*/
 function buildNaverQuery(name, addr){
 
     if(!addr) return name;
 
-    // 1. 구 추출 (노원구)
     const guMatch = addr.match(/([가-힣]+구)/);
     const gu = guMatch ? guMatch[1] : "";
 
-    // 2. 도로명 앞부분 추출 (상계로)
     const roadMatch = addr.match(/([가-힣]+로)/);
     const road = roadMatch ? roadMatch[1] : "";
 
@@ -146,12 +143,26 @@ function initMap(lat,lng){
         zoom:14
     });
 
-    // 내 위치
+    // 🔥 내 위치 (빨간색 마커)
     new naver.maps.Marker({
         position:new naver.maps.LatLng(lat,lng),
-        map:map
+        map:map,
+        icon:{
+            content:`
+                <div style="
+                    width:18px;
+                    height:18px;
+                    background:red;
+                    border:3px solid white;
+                    border-radius:50%;
+                    box-shadow:0 0 6px rgba(0,0,0,0.4);
+                "></div>
+            `,
+            anchor: new naver.maps.Point(9,9)
+        }
     });
 
+    // 지도 클릭 시 닫기
     naver.maps.Event.addListener(map,"click",()=>{
         hideNotice();
 
@@ -165,7 +176,7 @@ function initMap(lat,lng){
 }
 
 /* -------------------------------
-   약국 불러오기
+   약국 로드
 --------------------------------*/
 async function loadPharmacies(lat,lng){
 
@@ -176,6 +187,7 @@ async function loadPharmacies(lat,lng){
 
     data.forEach(p=>{
 
+        // 🔵 약국 마커 (기본 파란색)
         const marker = new naver.maps.Marker({
             position:new naver.maps.LatLng(p.lat,p.lng),
             map:map
@@ -186,7 +198,6 @@ async function loadPharmacies(lat,lng){
 
         if(dist <= 1 && open) hasOpen = true;
 
-        // 🔥 네이버 검색 (핵심 개선)
         const naverQuery = buildNaverQuery(p.name, p.addr);
 
         const naverLink =
@@ -239,7 +250,7 @@ async function loadPharmacies(lat,lng){
 }
 
 /* -------------------------------
-   위치
+   위치 가져오기
 --------------------------------*/
 navigator.geolocation.getCurrentPosition(
     pos=>{
