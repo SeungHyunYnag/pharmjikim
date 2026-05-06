@@ -18,9 +18,9 @@ const PHARMACY_API =
 const SEOUL_API =
 `http://openapi.seoul.go.kr:8088/${SEOUL_KEY}/json/TbPharmacyOperateInfo/1/1000/`;
 
-/* -----------------------------
-   서울 API 가져오기
------------------------------ */
+/* -------------------------
+   서울 데이터
+------------------------- */
 async function getSeoulData(){
     try {
         const res = await axios.get(SEOUL_API);
@@ -30,9 +30,9 @@ async function getSeoulData(){
     }
 }
 
-/* -----------------------------
-   공공 API
------------------------------ */
+/* -------------------------
+   공공 데이터
+------------------------- */
 async function getPharmacyData(lat,lng){
     const res = await axios.get(PHARMACY_API, {
         params: {
@@ -47,16 +47,19 @@ async function getPharmacyData(lat,lng){
     return res.data?.response?.body?.items?.item || [];
 }
 
-/* -----------------------------
-   이름 정리
------------------------------ */
+/* -------------------------
+   이름 정규화
+------------------------- */
 function normalize(n){
-    return (n || "").replace(/\s/g,"").replace(/\(.*?\)/g,"");
+    return (n || "")
+        .replace(/\s/g,"")
+        .replace(/\(.*?\)/g,"")
+        .toLowerCase();
 }
 
-/* -----------------------------
-   🔥 서울 API 필드 자동 대응
------------------------------ */
+/* -------------------------
+   시간 필드 추출
+------------------------- */
 function pickTime(obj, keys){
     for(const k of keys){
         if(obj?.[k]) return obj[k];
@@ -64,16 +67,18 @@ function pickTime(obj, keys){
     return null;
 }
 
-/* -----------------------------
-   MERGE
------------------------------ */
+/* -------------------------
+   MERGE (핵심)
+------------------------- */
 function merge(national, seoul){
 
     return national.map(p => {
 
-        const s = seoul.find(x =>
-            normalize(x.PHARM_NM) === normalize(p.dutyName)
-        );
+        const s = seoul.find(x => {
+            const a = normalize(x.PHARM_NM);
+            const b = normalize(p.dutyName);
+            return a.includes(b) || b.includes(a);
+        });
 
         return {
             name: p.dutyName,
@@ -82,9 +87,8 @@ function merge(national, seoul){
             addr: p.dutyAddr,
             tel: p.dutyTel1,
 
-            // 🔥 서울 API 다양한 필드 대응
-            weekdayStart: pickTime(s, ["MON_START","MON_OPEN_TM","WEEKDAY_START_TM"]),
-            weekdayEnd: pickTime(s, ["MON_END","MON_CLOSE_TM","WEEKDAY_END_TM"]),
+            weekdayStart: pickTime(s, ["MON_START","MON_OPEN_TM"]),
+            weekdayEnd: pickTime(s, ["MON_END","MON_CLOSE_TM"]),
             saturdayStart: pickTime(s, ["SAT_START","SAT_OPEN_TM"]),
             saturdayEnd: pickTime(s, ["SAT_END","SAT_CLOSE_TM"]),
 
@@ -93,9 +97,9 @@ function merge(national, seoul){
     });
 }
 
-/* -----------------------------
-   OPEN / CLOSE
------------------------------ */
+/* -------------------------
+   OPEN 판단
+------------------------- */
 function toTime(t){
     if(!t) return null;
     return parseInt(t);
@@ -124,9 +128,9 @@ function isOpen(p){
     return time >= start && time <= end;
 }
 
-/* -----------------------------
+/* -------------------------
    API
------------------------------ */
+------------------------- */
 app.get("/api/pharmacies", async (req,res)=>{
 
     const { lat, lng } = req.query;
@@ -147,5 +151,5 @@ app.get("/api/pharmacies", async (req,res)=>{
 });
 
 app.listen(PORT, ()=>{
-    console.log("server running:", PORT);
+    console.log("🚀 server running:", PORT);
 });
