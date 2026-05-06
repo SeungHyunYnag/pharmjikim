@@ -36,12 +36,6 @@
     text-align: center;
 }
 
-.notice-box a {
-    color: blue;
-    font-weight: bold;
-    text-decoration: underline;
-}
-
 .notice {
     font-size: 12px;
     font-weight: bold;
@@ -168,9 +162,9 @@ async function loadPharmacies(lat,lng){
 
         if(dist <= 1 && open) hasNearbyOpen = true;
 
-        // 🔥 네이버 "정보 보기" (약국명 + 주소 검색)
+        // 🔥 네이버 정보 보기 (핵심 수정)
         const naverLink =
-            `https://m.search.naver.com/search.naver?query=${encodeURIComponent(p.name + " " + (p.addr || ""))}`;
+            `https://map.naver.com/p/search/${encodeURIComponent(p.name + " " + (p.addr || ""))}`;
 
         const infoWindow = new naver.maps.InfoWindow({
             maxWidth:250,
