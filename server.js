@@ -1,5 +1,6 @@
 const express = require("express");
 const xml2js = require("xml2js");
+const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,11 +11,18 @@ process.env.SERVICE_KEY ||
 "3996c6ef0e033bd3cc0ce7f5c51b1d8b08dfea8e210adcfc13072073d08bfc35";
 
 // 🔥 캐시
-let cache = { data:null, time:0 };
+let cache = { data: null, time: 0 };
 const CACHE_TIME = 1000 * 60 * 10;
 
 // =============================
-// 📍 API
+// 🏠 홈페이지 (중요)
+// =============================
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "index.html"));
+});
+
+// =============================
+// 📍 약국 API
 // =============================
 app.get("/api/pharmacies", async (req, res) => {
 
@@ -65,7 +73,7 @@ app.get("/api/pharmacies", async (req, res) => {
 });
 
 // =============================
-// 📦 공공데이터 로딩
+// 📦 공공데이터
 // =============================
 async function loadPharmacies() {
 
@@ -104,8 +112,6 @@ function checkOpen(p) {
     const now = new Date();
     const day = now.getDay();
 
-    let start, end;
-
     const map = {
         1:["dutyTime1s","dutyTime1c"],
         2:["dutyTime2s","dutyTime2c"],
@@ -118,8 +124,8 @@ function checkOpen(p) {
 
     const [sKey,cKey] = map[day] || [];
 
-    start = p[sKey]?.[0];
-    end = p[cKey]?.[0];
+    const start = p[sKey]?.[0];
+    const end = p[cKey]?.[0];
 
     if(!start || !end) return false;
 
