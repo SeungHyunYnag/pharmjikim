@@ -16,7 +16,6 @@ body,html{margin:0;padding:0;}
     background:#fff;
     border-radius:10px;
     font-size:13px;
-    line-height:1.5;
     max-width:260px;
 }
 
@@ -69,51 +68,46 @@ async function load(lat,lng){
     const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
     const data = await res.json();
 
-    if(!data || data.length === 0){
-        if(confirm("근처 약국이 없습니다.\n공공심야약국으로 이동할까요?")){
-            location.href =
-            "https://news.seoul.go.kr/welfare/archives/567003";
+    if(!data.length){
+        if(confirm("근처 약국 없음\n심야약국 이동?")){
+            location.href="https://news.seoul.go.kr/welfare/archives/567003";
         }
         return;
     }
 
-    data.forEach(p => {
+    data.forEach(p=>{
 
         const marker = new naver.maps.Marker({
             position:new naver.maps.LatLng(p.lat,p.lng),
             map:map
         });
 
-        const naverLink =
+        const link =
         `https://map.naver.com/v5/search/${encodeURIComponent(p.name+" "+p.addr)}`;
 
         const info = new naver.maps.InfoWindow({
             content:`
                 <div class="info-box">
-
                     <b>${p.name}</b><br/>
-
                     📍 ${p.addr}<br/><br/>
 
-                    <div style="display:flex;justify-content:space-between;">
-                        <span>🕒 ${formatTime(p.weekdayStart)} ~ ${formatTime(p.weekdayEnd)}</span>
-                        <span>${p.isOpen ? "🟢 운영중" : "🔴 종료"}</span>
-                    </div>
-
+                    🕒 ${formatTime(p.weekdayStart)} ~ ${formatTime(p.weekdayEnd)}
                     <br/>
+                    ${p.isOpen ? "🟢 운영중" : "🔴 종료"}
+
+                    <br/><br/>
 
                     📞 <a href="tel:${p.tel}">${p.tel || "-"}</a>
 
                     <hr/>
 
                     <a href="https://www.pharm114.or.kr" target="_blank">
-                        🔗 휴일지킴이 약국
+                        휴일지킴이 약국
                     </a><br/>
 
-                    <a href="${naverLink}" target="_blank">
-                        🔎 네이버 지도
+                    <a href="${link}" target="_blank">
+                        네이버 지도
                     </a>
-
                 </div>
             `
         });
