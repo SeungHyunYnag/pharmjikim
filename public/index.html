@@ -17,6 +17,7 @@ body,html{margin:0;padding:0;}
     border-radius:10px;
     font-size:13px;
     max-width:260px;
+    line-height:1.4;
 }
 
 a{text-decoration:none;}
@@ -32,6 +33,9 @@ a{text-decoration:none;}
 let map;
 let currentInfoWindow = null;
 
+// =============================
+// InfoWindow 닫기
+// =============================
 function closeInfo(){
     if(currentInfoWindow){
         currentInfoWindow.close();
@@ -39,12 +43,9 @@ function closeInfo(){
     }
 }
 
-function formatTime(t){
-    if(!t) return "-";
-    t = t.toString().padStart(4,"0");
-    return t.slice(0,2)+":"+t.slice(2);
-}
-
+// =============================
+// 지도 초기화
+// =============================
 function initMap(lat,lng){
 
     map = new naver.maps.Map("map",{
@@ -52,26 +53,30 @@ function initMap(lat,lng){
         zoom:14
     });
 
+    // 🔴 현재 위치
     new naver.maps.Marker({
         position:new naver.maps.LatLng(lat,lng),
-        map:map,
-        icon:{
-            content:`<div style="width:14px;height:14px;background:red;border-radius:50%;border:2px solid #fff"></div>`
-        }
+        map:map
+    });
+
+    // 🔥 지도 클릭하면 창 닫힘
+    naver.maps.Event.addListener(map, "click", () => {
+        closeInfo();
     });
 
     load(lat,lng);
 }
 
+// =============================
+// 데이터 로드
+// =============================
 async function load(lat,lng){
 
     const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
     const data = await res.json();
 
     if(!data.length){
-        if(confirm("근처 약국 없음\n심야약국 이동?")){
-            location.href="https://news.seoul.go.kr/welfare/archives/567003";
-        }
+        alert("10km 내 약국이 없습니다.");
         return;
     }
 
@@ -91,27 +96,18 @@ async function load(lat,lng){
                     <b>${p.name}</b><br/>
                     📍 ${p.addr}<br/><br/>
 
-                    🕒 ${formatTime(p.weekdayStart)} ~ ${formatTime(p.weekdayEnd)}
-                    <br/>
-                    ${p.isOpen ? "🟢 운영중" : "🔴 종료"}
+                    📞 <a href="tel:${p.tel}">${p.tel || "-"}</a><br/><br/>
 
-                    <br/><br/>
-
-                    📞 <a href="tel:${p.tel}">${p.tel || "-"}</a>
-
-                    <hr/>
-
-                    <a href="https://www.pharm114.or.kr" target="_blank">
-                        휴일지킴이 약국
-                    </a><br/>
+                    📏 ${p.distance.toFixed(2)} km<br/><br/>
 
                     <a href="${link}" target="_blank">
-                        네이버 지도
+                        네이버 지도 보기
                     </a>
                 </div>
             `
         });
 
+        // 🔥 마커 클릭 → 열기
         naver.maps.Event.addListener(marker,"click",()=>{
             closeInfo();
             info.open(map,marker);
@@ -121,6 +117,9 @@ async function load(lat,lng){
     });
 }
 
+// =============================
+// 위치
+// =============================
 navigator.geolocation.getCurrentPosition(pos=>{
     initMap(pos.coords.latitude,pos.coords.longitude);
 });
