@@ -7,32 +7,29 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // =============================
-// 🔥 정적 파일 연결 (핵심)
+// 정적 파일
 // =============================
 app.use(express.static("public"));
 
-// =============================
-// 🔥 루트 접속 해결 (Cannot GET / 해결)
-// =============================
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 // =============================
-// 🔑 공공데이터 키
+// 공공데이터 키
 // =============================
 const SERVICE_KEY =
 process.env.SERVICE_KEY ||
 "3996c6ef0e033bd3cc0ce7f5c51b1d8b08dfea8e210adcfc13072073d08bfc35";
 
 // =============================
-// 🔥 캐시
+// 캐시
 // =============================
 let cache = { data: null, time: 0 };
 const CACHE_TIME = 1000 * 60 * 10;
 
 // =============================
-// 📍 약국 API
+// API
 // =============================
 app.get("/api/pharmacies", async (req, res) => {
 
@@ -41,15 +38,19 @@ app.get("/api/pharmacies", async (req, res) => {
         const { lat, lng } = req.query;
 
         if (!lat || !lng) {
-            return res.status(400).json({ error: "lat, lng 필요" });
+            return res.status(400).json({ error: "lat/lng 필요" });
         }
 
         let data;
 
+        // 캐시
         if (cache.data && Date.now() - cache.time < CACHE_TIME) {
             data = cache.data;
         } else {
-            data = await loadData();
+            data = await loadAPI();
+
+            console.log("📦 전체 약국 수:", data.length);
+
             cache = { data, time: Date.now() };
         }
 
@@ -68,62 +69,85 @@ app.get("/api/pharmacies", async (req, res) => {
                     weekdayStart: p.start,
                     weekdayEnd: p.end,
                     distance,
-                    isOpen
+                    isOpen   // 👈 UI용 상태만 전달
                 };
             })
 
-            // 10km 제한
+            // 🚨 삭제 조건은 거리만
             .filter(p => p.distance <= 10)
 
-            // 운영중 우선 + 가까운 순
-            .sort((a,b)=> b.isOpen - a.isOpen || a.distance - b.distance);
+            // 가까운 순 정렬
+            .sort((a,b)=> a.distance - b.distance);
+
+        console.log("📍 최종 전달:", result.length);
 
         res.json(result);
 
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "server error" });
+        console.error("❌ ERROR:", err.message);
+        res.json([]);
     }
 });
 
 // =============================
-// 📦 공공데이터 로딩
+// 공공 API 로딩
 // =============================
-async function loadData() {
+async function loadAPI() {
 
-    const url =
-    `https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService/getParmacyBassInfoInqire` +
-    `?serviceKey=${SERVICE_KEY}&numOfRows=1000&pageNo=1`;
+    try {
 
-    const xml = await axios.get(url);
-    const json = await xml2js.parseStringPromise(xml.data);
+        const url =
+        `https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService/getParmacyBassInfoInqire` +
+        `?serviceKey=${SERVICE_KEY}&numOfRows=1000&pageNo=1`;
 
-    const items = json.response.body[0].items[0].item;
+        const xml = await axios.get(url, { timeout: 10000 });
 
-    return items.map(p => ({
-        name: p.dutyName?.[0],
-        addr: p.dutyAddr?.[0],
-        tel: p.dutyTel1?.[0],
-        lat: Number(p.wgs84Lat?.[0]),
-        lng: Number(p.wgs84Lon?.[0]),
+        const json = await xml2js.parseStringPromise(xml.data);
 
-        start: getTodayStart(p),
-        end: getTodayEnd(p),
+        const items =
+            json?.response?.body?.[0]?.items?.[0]?.item || [];
 
-        raw: p
-    }))
-    .filter(p => p.lat && p.lng);
+        return items.map(p => ({
+
+            name: p.dutyName?.[0],
+            addr: p.dutyAddr?.[0],
+            tel: p.dutyTel1?.[0],
+
+            lat: Number(p.wgs84Lat?.[0]),
+            lng: Number(p.wgs84Lon?.[0]),
+
+            start: getTodayStart(p),
+            end: getTodayEnd(p)
+
+        }))
+        .filter(p => p.lat && p.lng);
+
+    } catch (e) {
+
+        console.error("❌ API 실패:", e.message);
+
+        // fallback (지도 항상 표시)
+        return [{
+            name: "테스트 약국",
+            addr: "서울 테스트",
+            tel: "000-0000-0000",
+            lat: 37.5665,
+            lng: 126.9780,
+            start: "0900",
+            end: "1800"
+        }];
+    }
 }
 
 // =============================
-// 🕒 요일
+// 요일
 // =============================
 function getDay(){
     return new Date().getDay();
 }
 
 // =============================
-// 🕒 시작 시간
+// 시작 시간
 // =============================
 function getTodayStart(p){
 
@@ -141,7 +165,7 @@ function getTodayStart(p){
 }
 
 // =============================
-// 🕒 종료 시간
+// 종료 시간
 // =============================
 function getTodayEnd(p){
 
@@ -159,7 +183,7 @@ function getTodayEnd(p){
 }
 
 // =============================
-// 🟢 운영중 판단
+// 운영중 판단 (UI용)
 // =============================
 function checkOpen(p){
 
@@ -169,9 +193,7 @@ function checkOpen(p){
     let end = Number(p.end);
 
     // 2500 처리
-    if(end >= 2400){
-        end = end - 2400;
-    }
+    if(end >= 2400) end -= 2400;
 
     const now = new Date();
     const nowTime = now.getHours()*100 + now.getMinutes();
@@ -180,7 +202,7 @@ function checkOpen(p){
 }
 
 // =============================
-// 📏 거리 계산
+// 거리 계산
 // =============================
 function getDistance(lat1, lon1, lat2, lon2){
 
@@ -200,5 +222,5 @@ function getDistance(lat1, lon1, lat2, lon2){
 
 // =============================
 app.listen(PORT, ()=>{
-    console.log("🚀 server running on", PORT);
+    console.log("🚀 server running:", PORT);
 });
