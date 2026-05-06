@@ -34,7 +34,7 @@ let map;
 let currentInfoWindow = null;
 
 // =============================
-// InfoWindow 닫기
+// Info 닫기
 // =============================
 function closeInfo(){
     if(currentInfoWindow){
@@ -44,7 +44,20 @@ function closeInfo(){
 }
 
 // =============================
-// 지도 초기화
+// 주소 자르기 (핵심)
+// =============================
+function trimAddress(addr){
+
+    if(!addr) return "";
+
+    return addr
+        .split(" ")
+        .slice(0,3) // 시 / 구 / 도로까지만
+        .join(" ");
+}
+
+// =============================
+// 지도
 // =============================
 function initMap(lat,lng){
 
@@ -53,14 +66,13 @@ function initMap(lat,lng){
         zoom:14
     });
 
-    // 🔴 현재 위치
     new naver.maps.Marker({
         position:new naver.maps.LatLng(lat,lng),
         map:map
     });
 
     // 🔥 지도 클릭하면 창 닫힘
-    naver.maps.Event.addListener(map, "click", () => {
+    naver.maps.Event.addListener(map,"click",()=>{
         closeInfo();
     });
 
@@ -68,17 +80,12 @@ function initMap(lat,lng){
 }
 
 // =============================
-// 데이터 로드
+// 데이터
 // =============================
 async function load(lat,lng){
 
     const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
     const data = await res.json();
-
-    if(!data.length){
-        alert("10km 내 약국이 없습니다.");
-        return;
-    }
 
     data.forEach(p=>{
 
@@ -87,27 +94,32 @@ async function load(lat,lng){
             map:map
         });
 
+        // 🔥 네이버 검색용 주소 (핵심 수정)
+        const cleanAddr = trimAddress(p.addr);
+
         const link =
-        `https://map.naver.com/v5/search/${encodeURIComponent(p.name+" "+p.addr)}`;
+        `https://map.naver.com/v5/search/${encodeURIComponent(p.name + " " + cleanAddr)}`;
 
         const info = new naver.maps.InfoWindow({
             content:`
                 <div class="info-box">
+
                     <b>${p.name}</b><br/>
                     📍 ${p.addr}<br/><br/>
 
-                    📞 <a href="tel:${p.tel}">${p.tel || "-"}</a><br/><br/>
-
                     📏 ${p.distance.toFixed(2)} km<br/><br/>
 
+                    📞 <a href="tel:${p.tel}">${p.tel || "-"}</a><br/><br/>
+
                     <a href="${link}" target="_blank">
-                        네이버 지도 보기
+                        🔎 네이버에서 보기
                     </a>
+
                 </div>
             `
         });
 
-        // 🔥 마커 클릭 → 열기
+        // 마커 클릭
         naver.maps.Event.addListener(marker,"click",()=>{
             closeInfo();
             info.open(map,marker);
@@ -117,8 +129,6 @@ async function load(lat,lng){
     });
 }
 
-// =============================
-// 위치
 // =============================
 navigator.geolocation.getCurrentPosition(pos=>{
     initMap(pos.coords.latitude,pos.coords.longitude);
