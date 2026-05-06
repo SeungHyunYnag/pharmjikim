@@ -1,9 +1,22 @@
 const express = require("express");
+const path = require("path");
 const axios = require("axios");
 const xml2js = require("xml2js");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// =============================
+// 🔥 정적 파일 연결 (핵심)
+// =============================
+app.use(express.static("public"));
+
+// =============================
+// 🔥 루트 접속 해결 (Cannot GET / 해결)
+// =============================
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "index.html"));
+});
 
 // =============================
 // 🔑 공공데이터 키
@@ -19,7 +32,7 @@ let cache = { data: null, time: 0 };
 const CACHE_TIME = 1000 * 60 * 10;
 
 // =============================
-// 📍 API
+// 📍 약국 API
 // =============================
 app.get("/api/pharmacies", async (req, res) => {
 
@@ -33,7 +46,6 @@ app.get("/api/pharmacies", async (req, res) => {
 
         let data;
 
-        // 캐시
         if (cache.data && Date.now() - cache.time < CACHE_TIME) {
             data = cache.data;
         } else {
@@ -55,15 +67,15 @@ app.get("/api/pharmacies", async (req, res) => {
                     tel: p.tel,
                     weekdayStart: p.start,
                     weekdayEnd: p.end,
-                    isOpen,
-                    distance
+                    distance,
+                    isOpen
                 };
             })
 
             // 10km 제한
             .filter(p => p.distance <= 10)
 
-            // 운영중 우선 정렬
+            // 운영중 우선 + 가까운 순
             .sort((a,b)=> b.isOpen - a.isOpen || a.distance - b.distance);
 
         res.json(result);
@@ -89,15 +101,12 @@ async function loadData() {
     const items = json.response.body[0].items[0].item;
 
     return items.map(p => ({
-
         name: p.dutyName?.[0],
         addr: p.dutyAddr?.[0],
         tel: p.dutyTel1?.[0],
-
         lat: Number(p.wgs84Lat?.[0]),
         lng: Number(p.wgs84Lon?.[0]),
 
-        // 요일 시간
         start: getTodayStart(p),
         end: getTodayEnd(p),
 
@@ -107,18 +116,16 @@ async function loadData() {
 }
 
 // =============================
-// 🕒 오늘 요일 계산
+// 🕒 요일
 // =============================
-function getDay() {
-    return new Date().getDay(); // 0~6
+function getDay(){
+    return new Date().getDay();
 }
 
 // =============================
-// 🕒 오늘 시작 시간
+// 🕒 시작 시간
 // =============================
 function getTodayStart(p){
-
-    const d = getDay();
 
     const map = {
         0:"dutyTime7s",
@@ -127,18 +134,16 @@ function getTodayStart(p){
         3:"dutyTime3s",
         4:"dutyTime4s",
         5:"dutyTime5s",
-        6:"dutyTime6s",
+        6:"dutyTime6s"
     };
 
-    return p[map[d]]?.[0];
+    return p[map[getDay()]]?.[0];
 }
 
 // =============================
-// 🕒 오늘 종료 시간
+// 🕒 종료 시간
 // =============================
 function getTodayEnd(p){
-
-    const d = getDay();
 
     const map = {
         0:"dutyTime7c",
@@ -147,10 +152,10 @@ function getTodayEnd(p){
         3:"dutyTime3c",
         4:"dutyTime4c",
         5:"dutyTime5c",
-        6:"dutyTime6c",
+        6:"dutyTime6c"
     };
 
-    return p[map[d]]?.[0];
+    return p[map[getDay()]]?.[0];
 }
 
 // =============================
@@ -160,10 +165,10 @@ function checkOpen(p){
 
     if(!p.start || !p.end) return false;
 
-    let start = parseInt(p.start);
-    let end = parseInt(p.end);
+    let start = Number(p.start);
+    let end = Number(p.end);
 
-    // 🔥 2500 처리 (익일)
+    // 2500 처리
     if(end >= 2400){
         end = end - 2400;
     }
@@ -177,12 +182,12 @@ function checkOpen(p){
 // =============================
 // 📏 거리 계산
 // =============================
-function getDistance(lat1, lon1, lat2, lon2) {
+function getDistance(lat1, lon1, lat2, lon2){
 
     const R = 6371;
 
-    const dLat = (lat2-lat1) * Math.PI/180;
-    const dLon = (lon2-lon1) * Math.PI/180;
+    const dLat = (lat2-lat1)*Math.PI/180;
+    const dLon = (lon2-lon1)*Math.PI/180;
 
     const a =
         Math.sin(dLat/2)**2 +
@@ -195,5 +200,5 @@ function getDistance(lat1, lon1, lat2, lon2) {
 
 // =============================
 app.listen(PORT, ()=>{
-    console.log("server running:", PORT);
+    console.log("🚀 server running on", PORT);
 });
