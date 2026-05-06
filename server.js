@@ -18,9 +18,9 @@ const PHARMACY_API =
 const SEOUL_API =
 `http://openapi.seoul.go.kr:8088/${SEOUL_KEY}/json/TbPharmacyOperateInfo/1/1000/`;
 
-/* -------------------------
+/* -----------------------------
    서울 데이터
-------------------------- */
+----------------------------- */
 async function getSeoulData(){
     try {
         const res = await axios.get(SEOUL_API);
@@ -30,9 +30,9 @@ async function getSeoulData(){
     }
 }
 
-/* -------------------------
+/* -----------------------------
    공공 데이터
-------------------------- */
+----------------------------- */
 async function getPharmacyData(lat,lng){
     const res = await axios.get(PHARMACY_API, {
         params: {
@@ -47,9 +47,9 @@ async function getPharmacyData(lat,lng){
     return res.data?.response?.body?.items?.item || [];
 }
 
-/* -------------------------
+/* -----------------------------
    이름 정규화
-------------------------- */
+----------------------------- */
 function normalize(n){
     return (n || "")
         .replace(/\s/g,"")
@@ -57,28 +57,51 @@ function normalize(n){
         .toLowerCase();
 }
 
-/* -------------------------
-   시간 필드 추출
-------------------------- */
-function pickTime(obj, keys){
-    for(const k of keys){
-        if(obj?.[k]) return obj[k];
+/* -----------------------------
+   🔥 오늘 요일 기준 시간 추출
+----------------------------- */
+function getTodayTime(s){
+
+    if(!s) return { start:null, end:null };
+
+    const day = new Date().getDay();
+
+    if(day === 0){ // 일요일
+        return {
+            start: s.DUTYTIME7S || null,
+            end: s.DUTYTIME7C || null
+        };
     }
-    return null;
+
+    const map = {
+        1: [s.DUTYTIME1S, s.DUTYTIME1C],
+        2: [s.DUTYTIME2S, s.DUTYTIME2C],
+        3: [s.DUTYTIME3S, s.DUTYTIME3C],
+        4: [s.DUTYTIME4S, s.DUTYTIME4C],
+        5: [s.DUTYTIME5S, s.DUTYTIME5C],
+        6: [s.DUTYTIME6S, s.DUTYTIME6C],
+    };
+
+    return {
+        start: map[day]?.[0] || null,
+        end: map[day]?.[1] || null
+    };
 }
 
-/* -------------------------
-   MERGE (핵심)
-------------------------- */
+/* -----------------------------
+   MERGE
+----------------------------- */
 function merge(national, seoul){
 
     return national.map(p => {
 
         const s = seoul.find(x => {
-            const a = normalize(x.PHARM_NM);
+            const a = normalize(x.DUTYNAME);
             const b = normalize(p.dutyName);
             return a.includes(b) || b.includes(a);
         });
+
+        const today = getTodayTime(s);
 
         return {
             name: p.dutyName,
@@ -87,50 +110,31 @@ function merge(national, seoul){
             addr: p.dutyAddr,
             tel: p.dutyTel1,
 
-            weekdayStart: pickTime(s, ["MON_START","MON_OPEN_TM"]),
-            weekdayEnd: pickTime(s, ["MON_END","MON_CLOSE_TM"]),
-            saturdayStart: pickTime(s, ["SAT_START","SAT_OPEN_TM"]),
-            saturdayEnd: pickTime(s, ["SAT_END","SAT_CLOSE_TM"]),
-
-            holidayOpen: s?.HOLIDAY_YN || "N"
+            weekdayStart: today.start,
+            weekdayEnd: today.end
         };
     });
 }
 
-/* -------------------------
+/* -----------------------------
    OPEN 판단
-------------------------- */
-function toTime(t){
-    if(!t) return null;
-    return parseInt(t);
-}
-
+----------------------------- */
 function isOpen(p){
 
+    if(!p.weekdayStart || !p.weekdayEnd) return true;
+
     const now = new Date();
-    const day = now.getDay();
     const time = now.getHours()*100 + now.getMinutes();
 
-    const start = toTime(p.weekdayStart);
-    const end = toTime(p.weekdayEnd);
-
-    if(!start || !end) return true;
-
-    if(day === 0){
-        return p.holidayOpen === "Y";
-    }
-
-    if(day === 6){
-        return time >= toTime(p.saturdayStart || start) &&
-               time <= toTime(p.saturdayEnd || end);
-    }
+    const start = parseInt(p.weekdayStart);
+    const end = parseInt(p.weekdayEnd);
 
     return time >= start && time <= end;
 }
 
-/* -------------------------
+/* -----------------------------
    API
-------------------------- */
+----------------------------- */
 app.get("/api/pharmacies", async (req,res)=>{
 
     const { lat, lng } = req.query;
