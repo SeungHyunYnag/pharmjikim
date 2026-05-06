@@ -12,26 +12,23 @@ const PORT = process.env.PORT || 3000;
 /* ------------------------------------
    🔑 API KEY
 ------------------------------------ */
-const PUBLIC_KEY =
-"3996c6ef0e033bd3cc0ce7f5c51b1d8b08dfea8e210adcfc13072073d08bfc35";
-
-const SEOUL_KEY =
-"4d754d515773616d35387343596568";
+const PUBLIC_KEY = "3996c6ef0e033bd3cc0ce7f5c51b1d8b08dfea8e210adcfc13072073d08bfc35";
+const SEOUL_KEY = "4d754d515773616d35387343596568";
 
 /* ------------------------------------
-   📍 공공 약국 위치 API
+   📍 공공 API (약국 위치)
 ------------------------------------ */
 const PHARMACY_API =
 "https://apis.data.go.kr/B552657/ErmctInsttInfoInqireService/getParmacyLcinfoInqire";
 
 /* ------------------------------------
-   🏙 서울 약국 운영시간 API
+   🏙 서울 API (운영시간)
 ------------------------------------ */
 const SEOUL_API =
 `http://openapi.seoul.go.kr:8088/${SEOUL_KEY}/json/TbPharmacyOperateInfo/1/1000/`;
 
 /* ------------------------------------
-   📦 서울 데이터
+   🔥 서울 데이터
 ------------------------------------ */
 async function getSeoulData(){
     try {
@@ -44,7 +41,7 @@ async function getSeoulData(){
 }
 
 /* ------------------------------------
-   📦 공공 약국 데이터
+   🔥 공공 약국 데이터
 ------------------------------------ */
 async function getPharmacyData(lat,lng){
 
@@ -62,20 +59,28 @@ async function getPharmacyData(lat,lng){
 }
 
 /* ------------------------------------
-   🔥 MERGE (핵심)
+   🔧 이름 정규화 (핵심)
+------------------------------------ */
+function normalize(name){
+    if(!name) return "";
+    return name.replace(/\s/g,"").replace(/\(.*?\)/g,"");
+}
+
+/* ------------------------------------
+   🔥 MERGE (핵심 수정)
 ------------------------------------ */
 function mergeData(national, seoul){
 
     return national.map(p => {
 
         const s = seoul.find(x =>
-            x.PHARM_NM === p.dutyName
+            normalize(x.PHARM_NM) === normalize(p.dutyName)
         );
 
         return {
             name: p.dutyName,
-            lat: p.latitude,
-            lng: p.longitude,
+            lat: Number(p.latitude),
+            lng: Number(p.longitude),
             addr: p.dutyAddr,
             tel: p.dutyTel1,
 
@@ -89,7 +94,15 @@ function mergeData(national, seoul){
 }
 
 /* ------------------------------------
-   🕒 OPEN / CLOSE 판단
+   🔥 시간 변환
+------------------------------------ */
+function parseTime(t){
+    if(!t) return null;
+    return parseInt(t);
+}
+
+/* ------------------------------------
+   🕒 OPEN / CLOSE (안전 버전)
 ------------------------------------ */
 function isOpen(p){
 
@@ -97,19 +110,26 @@ function isOpen(p){
     const day = now.getDay();
     const time = now.getHours()*100 + now.getMinutes();
 
+    const start = parseTime(p.weekdayStart);
+    const end = parseTime(p.weekdayEnd);
+
+    // 데이터 없으면 unknown → false 처리 대신 true로 변경 가능
+    if(!start || !end) return true;
+
     if(day === 0){
         return p.holidayOpen === "Y";
     }
 
     if(day === 6){
-        return time >= p.saturdayStart && time <= p.saturdayEnd;
+        return time >= parseTime(p.saturdayStart || start) &&
+               time <= parseTime(p.saturdayEnd || end);
     }
 
-    return time >= p.weekdayStart && time <= p.weekdayEnd;
+    return time >= start && time <= end;
 }
 
 /* ------------------------------------
-   🌐 API (프론트)
+   🌐 API
 ------------------------------------ */
 app.get("/api/pharmacies", async (req,res)=>{
 
@@ -137,8 +157,8 @@ app.get("/api/pharmacies", async (req,res)=>{
 });
 
 /* ------------------------------------
-   🚀 서버 실행
+   🚀 SERVER
 ------------------------------------ */
 app.listen(PORT, ()=>{
-    console.log("🚀 server running on port", PORT);
+    console.log("🚀 server running:", PORT);
 });
