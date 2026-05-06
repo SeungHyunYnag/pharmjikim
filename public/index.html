@@ -42,6 +42,9 @@ body,html{
 let map;
 let currentInfoWindow = null;
 
+// 🔥 추가: 공공심야약국 팝업 관리용
+let noInfoWindow = null;
+
 // =========================
 function closeInfo(){
     if(currentInfoWindow){
@@ -114,8 +117,14 @@ function initMap(lat,lng){
         }
     });
 
+    // 🔥 지도 클릭 시 둘 다 닫기
     naver.maps.Event.addListener(map,"click",()=>{
         closeInfo();
+
+        if(noInfoWindow){
+            noInfoWindow.close();
+            noInfoWindow = null;
+        }
     });
 
     load(lat,lng);
@@ -131,20 +140,16 @@ async function load(lat,lng){
 
     data.forEach(p=>{
 
-        // ✔️ 핵심 수정: 안전한 좌표 처리
-        const lat2 = p.lat;
-        const lng2 = p.lng;
+        if (!p.lat || !p.lng) return;
 
-        if (!lat2 || !lng2) return;
-
-        const dist = getDistance(lat, lng, lat2, lng2);
+        const dist = getDistance(lat, lng, p.lat, p.lng);
 
         if (!isNaN(dist) && dist <= 1) {
             hasNearby = true;
         }
 
         const marker = new naver.maps.Marker({
-            position:new naver.maps.LatLng(lat2,lng2),
+            position:new naver.maps.LatLng(p.lat,p.lng),
             map:map
         });
 
@@ -183,8 +188,16 @@ async function load(lat,lng){
         });
 
         naver.maps.Event.addListener(marker,"click",()=>{
+
             closeInfo();
-            info.open(map, marker);
+
+            // 🔥 추가: 공공 안내도 닫기
+            if(noInfoWindow){
+                noInfoWindow.close();
+                noInfoWindow = null;
+            }
+
+            info.open(map,marker);
             currentInfoWindow = info;
         });
 
@@ -209,8 +222,10 @@ async function load(lat,lng){
             `
         });
 
-        // ✔️ 안정 실행 (중요)
         info.open(map, map.getCenter());
+
+        // 🔥 저장 (핵심)
+        noInfoWindow = info;
     }
 }
 
