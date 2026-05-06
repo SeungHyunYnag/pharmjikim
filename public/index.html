@@ -60,19 +60,23 @@
 let map;
 let currentInfoWindow = null;
 
-// 시간 포맷
+/* -------------------------------
+   시간 포맷
+--------------------------------*/
 function formatTime(t){
     if(!t) return "정보 없음";
     t = t.toString().padStart(4,"0");
-    return t.slice(0,2) + ":" + t.slice(2);
+    return t.slice(0,2)+":"+t.slice(2);
 }
 
-// 운영 여부
+/* -------------------------------
+   운영 여부
+--------------------------------*/
 function isOpen(start,end){
     if(!start || !end) return false;
 
     let now = new Date();
-    let current = now.getHours() * 100 + now.getMinutes();
+    let current = now.getHours()*100 + now.getMinutes();
 
     let s = parseInt(start);
     let e = parseInt(end);
@@ -85,11 +89,13 @@ function isOpen(start,end){
     return current >= s && current <= e;
 }
 
-// 거리 계산
+/* -------------------------------
+   거리 계산
+--------------------------------*/
 function getDistance(lat1,lng1,lat2,lng2){
     const R = 6371;
-    const dLat = (lat2-lat1) * Math.PI/180;
-    const dLng = (lng2-lng1) * Math.PI/180;
+    const dLat = (lat2-lat1)*Math.PI/180;
+    const dLng = (lng2-lng1)*Math.PI/180;
 
     const a =
         Math.sin(dLat/2)**2 +
@@ -100,6 +106,28 @@ function getDistance(lat1,lng1,lat2,lng2){
     return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
 }
 
+/* -------------------------------
+   핵심 🔥 네이버 검색용 문자열 생성
+   👉 "중앙약국 노원구 상계로"
+--------------------------------*/
+function buildNaverQuery(name, addr){
+
+    if(!addr) return name;
+
+    // 1. 구 추출 (노원구)
+    const guMatch = addr.match(/([가-힣]+구)/);
+    const gu = guMatch ? guMatch[1] : "";
+
+    // 2. 도로명 앞부분 추출 (상계로)
+    const roadMatch = addr.match(/([가-힣]+로)/);
+    const road = roadMatch ? roadMatch[1] : "";
+
+    return `${name} ${gu} ${road}`.trim();
+}
+
+/* -------------------------------
+   UI
+--------------------------------*/
 function showNotice(){
     document.getElementById("noticeBox").style.display="block";
 }
@@ -108,7 +136,9 @@ function hideNotice(){
     document.getElementById("noticeBox").style.display="none";
 }
 
-// 지도 초기화
+/* -------------------------------
+   지도 초기화
+--------------------------------*/
 function initMap(lat,lng){
 
     map = new naver.maps.Map("map",{
@@ -119,17 +149,9 @@ function initMap(lat,lng){
     // 내 위치
     new naver.maps.Marker({
         position:new naver.maps.LatLng(lat,lng),
-        map:map,
-        icon:{
-            url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(`
-                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22">
-                    <circle cx="11" cy="11" r="7" fill="red" stroke="white" stroke-width="2"/>
-                </svg>
-            `)
-        }
+        map:map
     });
 
-    // 지도 클릭 시 닫기
     naver.maps.Event.addListener(map,"click",()=>{
         hideNotice();
 
@@ -142,13 +164,15 @@ function initMap(lat,lng){
     loadPharmacies(lat,lng);
 }
 
-// 약국 로드
+/* -------------------------------
+   약국 불러오기
+--------------------------------*/
 async function loadPharmacies(lat,lng){
 
     const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
     const data = await res.json();
 
-    let hasNearbyOpen = false;
+    let hasOpen = false;
 
     data.forEach(p=>{
 
@@ -160,11 +184,13 @@ async function loadPharmacies(lat,lng){
         const dist = getDistance(lat,lng,p.lat,p.lng);
         const open = isOpen(p.start,p.end);
 
-        if(dist <= 1 && open) hasNearbyOpen = true;
+        if(dist <= 1 && open) hasOpen = true;
 
-        // 🔥 네이버 정보 보기 (v5/search 방식 - 안정형)
+        // 🔥 네이버 검색 (핵심 개선)
+        const naverQuery = buildNaverQuery(p.name, p.addr);
+
         const naverLink =
-            `https://map.naver.com/v5/search/${encodeURIComponent(p.name + " " + (p.addr || ""))}`;
+            `https://map.naver.com/p/search/${encodeURIComponent(naverQuery)}`;
 
         const infoWindow = new naver.maps.InfoWindow({
             maxWidth:250,
@@ -178,7 +204,7 @@ async function loadPharmacies(lat,lng){
                     📍 ${p.addr || ""}<br/>
 
                     <div class="notice">
-                        ※ 보다 정확한 운영 여부는 전화로 확인 바랍니다
+                        ※ 전화로 최종 확인 바랍니다
                     </div>
 
                     <hr/>
@@ -207,12 +233,14 @@ async function loadPharmacies(lat,lng){
         });
     });
 
-    if(!hasNearbyOpen){
+    if(!hasOpen){
         showNotice();
     }
 }
 
-// 위치 가져오기
+/* -------------------------------
+   위치
+--------------------------------*/
 navigator.geolocation.getCurrentPosition(
     pos=>{
         initMap(pos.coords.latitude,pos.coords.longitude);
