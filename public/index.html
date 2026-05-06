@@ -43,6 +43,7 @@ function initMap(lat,lng){
         zoom:14
     });
 
+    // 🔴 내 위치
     new naver.maps.Marker({
         position:new naver.maps.LatLng(lat,lng),
         map:map,
@@ -54,9 +55,6 @@ function initMap(lat,lng){
     load(lat,lng);
 }
 
-/* -----------------------------
-   데이터
------------------------------ */
 async function load(lat,lng){
 
     const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
@@ -79,44 +77,47 @@ async function load(lat,lng){
             content:`
                 <div class="info-box">
 
-                    <b>${p.name}</b><br/><br/>
+                    <b>${p.name}</b><br/>
 
-                    <!-- 🔥 한 줄 (요구사항) -->
+                    <div style="margin:4px 0;">
+                        📍 ${p.addr || ""}
+                    </div>
+
+                    <!-- 🔥 한 줄 핵심 -->
                     <div style="
                         display:flex;
                         justify-content:space-between;
-                        align-items:center;
-                        margin-bottom:6px;
+                        margin:6px 0;
+                        font-weight:500;
                     ">
                         <span>
                             🕒 ${p.weekdayStart || "-"} ~ ${p.weekdayEnd || "-"}
                         </span>
 
                         <span>
-                            🟢 ${p.isOpen ? "운영중" : "종료"}
+                            ${p.isOpen ? "🟢 운영중" : "🔴 종료"}
                         </span>
                     </div>
 
                     📞 <a href="tel:${p.tel}">${p.tel || "-"}</a><br/>
-                    📍 ${p.addr || ""}<br/>
 
-                    <div style="font-size:11px;color:#666;margin-top:6px;">
+                    <div style="
+                        margin-top:6px;
+                        font-weight:700;
+                        color:#000;
+                    ">
                         ※ 보다 정확한 운영 여부는 전화로 확인 바랍니다
                     </div>
 
                     <hr/>
 
-                    <div>
-                        <a href="https://www.pharm114.or.kr" target="_blank">
-                            🔗 휴일지킴이 약국 (pharm114)
-                        </a>
-                    </div>
+                    <a href="https://www.pharm114.or.kr" target="_blank">
+                        🔗 휴일지킴이 약국 (pharm114)
+                    </a><br/>
 
-                    <div>
-                        <a href="${naverLink}" target="_blank">
-                            🔎 네이버 정보
-                        </a>
-                    </div>
+                    <a href="${naverLink}" target="_blank">
+                        🔎 네이버 정보
+                    </a>
 
                 </div>
             `
