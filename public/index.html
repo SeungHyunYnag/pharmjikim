@@ -4,237 +4,210 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>휴일 지킴이 약국</title>
-
 <script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=c4or0vlqhm"></script>
 
 <style>
 body,html{
-    margin:0;
-    padding:0;
+  margin:0;
+  padding:0;
 }
-
 #map{
-    width:100%;
-    height:100vh;
+  width:100%;
+  height:100vh;
 }
-
 .info-box{
-    padding:10px;
-    background:#fff;
-    border-radius:10px;
-    font-size:13px;
-    line-height:1.3;
-    max-width:270px;
+  padding:10px;
+  background:#fff;
+  border-radius:10px;
+  font-size:13px;
+  line-height:1.3;
+  max-width:270px;
 }
-
 .info-box a{
-    text-decoration:none;
+  text-decoration:none;
 }
 </style>
 </head>
 
 <body>
-
 <div id="map"></div>
 
 <script>
-
 let map;
 let currentInfoWindow = null;
-
-// 🔥 추가: 공공심야약국 팝업 관리용
 let noInfoWindow = null;
 
 // =========================
 function closeInfo(){
-    if(currentInfoWindow){
-        currentInfoWindow.close();
-        currentInfoWindow = null;
-    }
+  if(currentInfoWindow){
+    currentInfoWindow.close();
+    currentInfoWindow = null;
+  }
 }
 
 // =========================
 function getDistance(lat1, lng1, lat2, lng2) {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
 
-    const a =
-        Math.sin(dLat/2) * Math.sin(dLat/2) +
-        Math.cos(lat1 * Math.PI / 180) *
-        Math.cos(lat2 * Math.PI / 180) *
-        Math.sin(dLng/2) * Math.sin(dLng/2);
+  const a =
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) *
+    Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng/2) * Math.sin(dLng/2);
 
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
 }
 
 // =========================
 function formatTime(t){
+  if(!t) return "-";
+  t = t.toString().padStart(4,"0");
+  let hour = parseInt(t.slice(0,2));
+  let min = t.slice(2);
 
-    if(!t) return "-";
+  if(hour >= 24){
+    hour = hour - 24;
+    return `다음날 ${String(hour).padStart(2,"0")}:${min}`;
+  }
 
-    t = t.toString().padStart(4,"0");
-
-    let hour = parseInt(t.slice(0,2));
-    let min = t.slice(2);
-
-    if(hour >= 24){
-        hour = hour - 24;
-        return `다음날 ${String(hour).padStart(2,"0")}:${min}`;
-    }
-
-    return `${String(hour).padStart(2,"0")}:${min}`;
+  return `${String(hour).padStart(2,"0")}:${min}`;
 }
 
 // =========================
 function trimAddress(addr){
-    if(!addr) return "";
-    return addr.split(" ").slice(0,3).join(" ");
+  if(!addr) return "";
+  return addr.split(" ").slice(0,3).join(" ");
 }
 
 // =========================
 function initMap(lat,lng){
 
-    map = new naver.maps.Map("map",{
-        center:new naver.maps.LatLng(lat,lng),
-        zoom:14
-    });
+  map = new naver.maps.Map("map",{
+    center:new naver.maps.LatLng(lat,lng),
+    zoom:14
+  });
 
-    new naver.maps.Marker({
-        position:new naver.maps.LatLng(lat,lng),
-        map:map,
-        icon:{
-            content:`
-                <div style="
-                    width:14px;
-                    height:14px;
-                    background:red;
-                    border-radius:50%;
-                    border:2px solid #fff;
-                "></div>
-            `
-        }
-    });
+  new naver.maps.Marker({
+    position:new naver.maps.LatLng(lat,lng),
+    map:map,
+    icon:{
+      content: `
+        <div style="
+          width:14px;
+          height:14px;
+          background:red;
+          border-radius:50%;
+          border:2px solid #fff;
+        "></div>
+      `
+    }
+  });
 
-    // 🔥 지도 클릭 시 둘 다 닫기
-    naver.maps.Event.addListener(map,"click",()=>{
-        closeInfo();
+  naver.maps.Event.addListener(map,"click",()=>{
+    closeInfo();
+    if(noInfoWindow){
+      noInfoWindow.close();
+      noInfoWindow = null;
+    }
+  });
 
-        if(noInfoWindow){
-            noInfoWindow.close();
-            noInfoWindow = null;
-        }
-    });
-
-    load(lat,lng);
+  load(lat,lng);
 }
 
 // =========================
 async function load(lat,lng){
 
-    const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
-    const data = await res.json();
+  const res = await fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`);
+  const data = await res.json();
 
-    let hasNearby = false;
+  let hasNearby = false;
 
-    data.forEach(p=>{
+  data.forEach(p=>{
+    if (!p.lat || !p.lng) return;
 
-        if (!p.lat || !p.lng) return;
+    const dist = getDistance(lat, lng, p.lat, p.lng);
+    if (!isNaN(dist) && dist <= 1) {
+      hasNearby = true;
+    }
 
-        const dist = getDistance(lat, lng, p.lat, p.lng);
-
-        if (!isNaN(dist) && dist <= 1) {
-            hasNearby = true;
-        }
-
-        const marker = new naver.maps.Marker({
-            position:new naver.maps.LatLng(p.lat,p.lng),
-            map:map
-        });
-
-        const cleanAddr = trimAddress(p.addr);
-
-        const naverLink =
-        `https://map.naver.com/v5/search/${encodeURIComponent(p.name + " " + cleanAddr)}`;
-
-        const info = new naver.maps.InfoWindow({
-            content:`
-                <div class="info-box">
-
-                    <b>${p.name}</b><br/>
-                    📍 ${p.addr}<br/>
-
-                    🕒 ${formatTime(p.start)} ~ ${formatTime(p.end)}<br/>
-
-                    📞 <a href="tel:${p.tel}">
-                        ${p.tel || "-"}
-                    </a><br/>
-
-                    <div style="border-top:1px solid #ddd;margin:6px 0;"></div>
-
-                    ※ 보다 정확한 운영 여부는 전화로 확인 바랍니다<br/>
-
-                    🔗 <a href="https://www.pharm114.or.kr" target="_blank">
-                        휴일지킴이 약국
-                    </a><br/>
-
-                    🔎 <a href="${naverLink}" target="_blank">
-                        네이버 정보
-                    </a>
-
-                </div>
-            `
-        });
-
-        naver.maps.Event.addListener(marker,"click",()=>{
-
-            closeInfo();
-
-            // 🔥 추가: 공공 안내도 닫기
-            if(noInfoWindow){
-                noInfoWindow.close();
-                noInfoWindow = null;
-            }
-
-            info.open(map,marker);
-            currentInfoWindow = info;
-        });
-
+    const marker = new naver.maps.Marker({
+      position:new naver.maps.LatLng(p.lat,p.lng),
+      map:map
     });
 
-    // =========================
-    if(!hasNearby){
+    const cleanAddr = trimAddress(p.addr);
 
-        const info = new naver.maps.InfoWindow({
-            content:`
-                <div class="info-box">
+    const naverLink =
+      `https://map.naver.com/v5/search/${encodeURIComponent(p.name + " " + cleanAddr)}`;
 
-                    <b>주변 1km 안에 운영중인 약국이 없습니다.</b><br/><br/>
+    const info = new naver.maps.InfoWindow({
+      content: `
+        <div class="info-box">
+          <b>${p.name}</b><br/>
+          📍 ${p.addr}<br/>
+          🕒 ${formatTime(p.start)} ~ ${formatTime(p.end)}<br/>
+          📞 <a href="tel:${p.tel}">${p.tel || "-"}</a><br/>
 
-                    👉 서울공공심야약국 정보를 알려드립니다.<br/><br/>
+          <div style="border-top:1px solid #ddd;margin:6px 0;"></div>
 
-                    🔗 <a href="https://news.seoul.go.kr/welfare/archives/567003" target="_blank">
-                        서울 공공심야약국 안내
-                    </a>
+          ※ 보다 정확한 운영 여부는 전화로 확인 바랍니다<br/>
 
-                </div>
-            `
-        });
+          🔗 <a href="https://www.pharm114.or.kr" target="_blank">
+            휴일지킴이 약국
+          </a>
+          <span style="font-size:11px;color:#888;">
+            (현재 PC 웹에서만 가능)
+          </span>
+          <br/>
 
-        info.open(map, map.getCenter());
+          🔎 <a href="${naverLink}" target="_blank">
+            네이버 정보
+          </a>
+        </div>
+      `
+    });
 
-        // 🔥 저장 (핵심)
-        noInfoWindow = info;
-    }
+    naver.maps.Event.addListener(marker,"click",()=>{
+      closeInfo();
+      if(noInfoWindow){
+        noInfoWindow.close();
+        noInfoWindow = null;
+      }
+      info.open(map,marker);
+      currentInfoWindow = info;
+    });
+
+  });
+
+  // =========================
+  if(!hasNearby){
+
+    const info = new naver.maps.InfoWindow({
+      content: `
+        <div class="info-box">
+          <b>주변 1km 안에 운영중인 약국이 없습니다.</b><br/><br/>
+          👉 서울공공심야약국 정보를 알려드립니다.<br/><br/>
+
+          🔗 <a href="https://news.seoul.go.kr/welfare/archives/567003" target="_blank">
+            서울 공공심야약국 안내
+          </a>
+        </div>
+      `
+    });
+
+    info.open(map, map.getCenter());
+    noInfoWindow = info;
+  }
 }
 
 // =========================
 navigator.geolocation.getCurrentPosition(pos=>{
-    initMap(pos.coords.latitude,pos.coords.longitude);
+  initMap(pos.coords.latitude,pos.coords.longitude);
 });
 
 </script>
-
 </body>
 </html>
